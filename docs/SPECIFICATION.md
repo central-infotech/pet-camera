@@ -63,7 +63,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 | カメラ制御 | OpenCV (Python) | Windows のカメラを安定して制御でき、実績が豊富 |
 | 音声入出力 | sounddevice (Python) | PortAudio バイナリ同梱。ビルド不要で Windows に容易に導入可能 |
 | Web サーバー | Flask (Python) | 軽量で MJPEG ストリーミングとの相性が良い |
-| WebSocket | Flask-SocketIO | Flask との統合が容易。音声の双方向リアルタイム通信に使用 |
+| WebSocket | Flask-SocketIO (`manage_session=False`) | Flask との統合が容易。音声の双方向リアルタイム通信に使用。Flask 3.1+ との互換性のため `manage_session=False` で初期化 |
 | 映像配信 | MJPEG over HTTPS | ブラウザ互換性が高く、実装がシンプル |
 | 音声配信 | WSS (WebSocket Secure, binary) | 低遅延の双方向音声ストリーミング。HTTPS と統一しMixed Content を回避 |
 | フロントエンド | HTML + CSS + JavaScript (Vanilla) | フレームワーク不要。Web Audio API / getUserMedia を使用 |
@@ -244,6 +244,10 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 接続先: `wss://<マシン名>.<tailnet名>.ts.net:5555/audio`（SocketIO namespace）
 
 > **注意**: `ws://`（非暗号化）は開発環境（localhost）でのみ使用可。本番運用では必ず `wss://` を使用すること。HTTPS ページから `ws://` への接続はブラウザの Mixed Content ポリシーによりブロックされる。
+
+#### セッション管理
+
+Flask-SocketIO は `manage_session=False` で初期化する。これにより Flask 標準のセッション管理を使用し、Flask 3.1+ の `RequestContext.session` プロパティ変更との互換性を確保する。Socket.IO ハンドラ内では Flask セッションの読み取りのみ行い、書き込みは行わない。
 
 #### 認証
 

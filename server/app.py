@@ -45,7 +45,8 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = not config.IS_DEV
 app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
 
-socketio = SocketIO(app, cors_allowed_origins=None, async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins=None, async_mode="threading",
+                    manage_session=False)
 
 # ---------------------------------------------------------------------------
 # Subsystems

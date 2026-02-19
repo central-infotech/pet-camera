@@ -39,6 +39,10 @@ class AudioCapture:
         if self._running:
             return
         try:
+            devices = sd.query_devices()
+            default_in = sd.default.device[0]
+            logger.info("AudioCapture: available devices:\n%s", devices)
+            logger.info("AudioCapture: using default input device: %s", default_in)
             self._stream = sd.InputStream(
                 samplerate=config.AUDIO_SAMPLE_RATE,
                 channels=config.AUDIO_CHANNELS,
@@ -48,7 +52,8 @@ class AudioCapture:
             )
             self._stream.start()
             self._running = True
-            logger.info("AudioCapture: microphone stream started")
+            logger.info("AudioCapture: microphone stream started (rate=%d, ch=%d, chunk=%d)",
+                        config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
         except Exception:
             logger.exception("AudioCapture: failed to start microphone")
 
@@ -96,6 +101,8 @@ class AudioPlayer:
         if self._running:
             return
         try:
+            default_out = sd.default.device[1]
+            logger.info("AudioPlayer: using default output device: %s", default_out)
             self._stream = sd.OutputStream(
                 samplerate=config.AUDIO_SAMPLE_RATE,
                 channels=config.AUDIO_CHANNELS,
@@ -104,7 +111,8 @@ class AudioPlayer:
             )
             self._stream.start()
             self._running = True
-            logger.info("AudioPlayer: speaker stream started")
+            logger.info("AudioPlayer: speaker stream started (rate=%d, ch=%d, chunk=%d)",
+                        config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
         except Exception:
             logger.exception("AudioPlayer: failed to start speaker")
 
