@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pet Camera - Login</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <h1>Pet Camera</h1>
+    <p>アクセストークンを入力してください</p>
+    <form id="login-form">
+      <input type="password" id="token-input" placeholder="トークン" autocomplete="off" required>
+      <button type="submit" id="login-btn">接続</button>
+      <p id="login-error" class="error" hidden></p>
+    </form>
+    <div id="passkey-section" hidden>
+      <div class="divider"><span>または</span></div>
+      <button id="btn-passkey-login" class="btn-passkey" type="button">
+        &#x1F511; パスキーでログイン
+      </button>
+    </div>
+  </div>
+  <style>
+    .divider {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin: 1rem 0; color: var(--text-muted); font-size: 0.85rem;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+    .btn-passkey {
+      width: 100%; padding: 0.75rem; border: 1px solid var(--accent);
+      border-radius: 8px; background: transparent; color: var(--accent);
+      font-size: 1rem; cursor: pointer;
+    }
+    .btn-passkey:hover { background: var(--accent); color: #fff; }
+    .btn-passkey:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+  <script>
+    // --- Token login ---
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = document.getElementById('token-input').value;
+      const errorEl = document.getElementById('login-error');
+      const btn = document.getElementById('login-btn');
+      errorEl.hidden = true;
+      btn.disabled = true;
+      btn.textContent = '接続中...';
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          errorEl.textContent = data.error?.message || '認証に失敗しました';
+          errorEl.hidden = false;
+        }
+      } catch (err) {
+        errorEl.textContent = '接続エラー';
+        errorEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '接続';
+      }
+    });
+
+    // --- Passkey (WebAuthn) login ---
+    const passkeySection = document.getElementById('passkey-section');
+    const btnPasskey = document.getElementById('btn-passkey-login');
+
+    // Helper: base64url encode/decode
+    function b64urlToBytes(b64url) {
+      const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = (4 - b64.length % 4) % 4;
+      const raw = atob(b64 + '='.repeat(pad));
+      return Uint8Array.from(raw, c => c.charCodeAt(0));
+    }
+    function bytesToB64url(bytes) {
+      const arr = new Uint8Array(bytes);
+      let binary = '';
+      for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    // Check if passkeys are available
+    async function checkPasskeys() {
+      if (!window.PublicKeyCredential) return;
+      try {
+        const res = await fetch('/api/webauthn/login/options', { method: 'POST' });
+        if (res.ok) passkeySection.hidden = false;
+      } catch (e) { /* ignore */ }
+    }
+    checkPasskeys();
+
+    btnPasskey.addEventListener('click', async () => {
+      const errorEl = document.getElementById('login-error');
+      errorEl.hidden = true;
+      btnPasskey.disabled = true;
+      btnPasskey.textContent = '認証中...';
+
+      try {
+        // Get authentication options
+        const optRes = await fetch('/api/webauthn/login/options', { method: 'POST' });
+        if (!optRes.ok) throw new Error('パスキーが登録されていません');
+        const options = await optRes.json();
+
+        // Decode challenge and allowCredentials
+        options.challenge = b64urlToBytes(options.challenge);
+        if (options.allowCredentials) {
+          options.allowCredentials = options.allowCredentials.map(c => ({
+            ...c, id: b64urlToBytes(c.id),
+          }));
+        }
+
+        // Invoke browser authenticator
+        const assertion = await navigator.credentials.get({ publicKey: options });
+
+        // Encode response
+        const body = {
+          id: assertion.id,
+          rawId: bytesToB64url(assertion.rawId),
+          type: assertion.type,
+          response: {
+            authenticatorData: bytesToB64url(assertion.response.authenticatorData),
+            clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
+            signature: bytesToB64url(assertion.response.signature),
+            userHandle: assertion.response.userHandle
+              ? bytesToB64url(assertion.response.userHandle) : null,
+          },
+        };
+
+        // Verify on server
+        const verifyRes = await fetch('/api/webauthn/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (verifyRes.ok) {
+          window.location.reload();
+        } else {
+          const data = await verifyRes.json();
+          errorEl.textContent = data.error?.message || '認証に失敗しました';
+          errorEl.hidden = false;
+        }
+      } catch (err) {
+        if (err.name !== 'NotAllowedError') {
+          errorEl.textContent = err.message || '認証に失敗しました';
+          errorEl.hidden = false;
+        }
+      } finally {
+        btnPasskey.disabled = false;
+        btnPasskey.textContent = '\u{1F511} パスキーでログイン';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Pet Camera</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <!-- Header -->
+  <header id="header">
+    <div class="header-left">
+      <span class="logo">Pet Camera</span>
+    </div>
+    <div class="header-right">
+      <span id="live-badge" class="badge">LIVE</span>
+      <span id="uptime">00:00:00</span>
+    </div>
+  </header>
+
+  <!-- Video -->
+  <main>
+    <div class="video-container">
+      <img id="video-stream" src="/video_feed" alt="Live Feed">
+      <div id="video-overlay" class="overlay" hidden>
+        <p>カメラに接続中...</p>
+      </div>
+    </div>
+
+    <!-- Audio Controls -->
+    <div class="controls audio-controls">
+      <button id="btn-listen" class="btn" title="家の音を聞く">
+        <span class="icon">&#x1F50A;</span> 聞く
+      </button>
+      <button id="btn-talk" class="btn" title="押している間話す">
+        <span class="icon">&#x1F3A4;</span> 話す
+      </button>
+      <label class="volume-control">
+        <span>音量</span>
+        <input type="range" id="volume-slider" min="0" max="100" value="80">
+      </label>
+    </div>
+
+    <!-- Action Controls -->
+    <div class="controls action-controls">
+      <button id="btn-snapshot" class="btn" title="ダウンロード">
+        <span class="icon">&#x1F4F7;</span> スナップショット
+      </button>
+      <button id="btn-save" class="btn" title="サーバーに保存">
+        <span class="icon">&#x1F4BE;</span> 保存
+      </button>
+      <button id="btn-settings" class="btn" title="設定">
+        <span class="icon">&#x2699;</span> 設定
+      </button>
+    </div>
+  </main>
+
+  <!-- Settings Panel -->
+  <div id="settings-panel" class="panel" hidden>
+    <div class="panel-header">
+      <h2>カメラ設定</h2>
+      <button id="btn-settings-close" class="btn-close">&times;</button>
+    </div>
+    <div class="panel-body">
+      <label>
+        解像度
+        <select id="setting-resolution">
+          <option value="640x480">640x480</option>
+          <option value="1280x720" selected>1280x720</option>
+          <option value="1920x1080">1920x1080</option>
+        </select>
+      </label>
+      <label>
+        FPS
+        <select id="setting-fps">
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="15" selected>15</option>
+          <option value="30">30</option>
+        </select>
+      </label>
+      <label>
+        明るさ <span id="brightness-val">50</span>
+        <input type="range" id="setting-brightness" min="0" max="100" value="50">
+      </label>
+      <label>
+        コントラスト <span id="contrast-val">50</span>
+        <input type="range" id="setting-contrast" min="0" max="100" value="50">
+      </label>
+      <div class="panel-actions">
+        <button id="btn-apply" class="btn btn-primary">適用</button>
+        <button id="btn-reset" class="btn">リセット</button>
+      </div>
+      <div id="passkey-register-section" class="passkey-section" hidden>
+        <hr style="border-color: var(--border); margin: 1rem 0;">
+        <label style="color: var(--text); font-weight: 600;">パスキー（生体認証）</label>
+        <p style="font-size: 0.8rem; margin: 0.25rem 0 0.5rem;" id="passkey-status">確認中...</p>
+        <button id="btn-passkey-register" class="btn btn-primary" style="width: 100%; justify-content: center;">
+          &#x1F511; このデバイスを登録
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <footer id="status-bar">
+    <span id="status-fps">-- fps</span>
+    <span id="status-res">--</span>
+    <span id="status-audio">音声: --</span>
+  </footer>
+
+  <script src="/static/js/audio.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
