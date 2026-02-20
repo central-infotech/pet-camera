@@ -143,6 +143,13 @@
   <script src="/static/js/audio.js"></script>
   <script src="/static/js/app.js"></script>
   <script>
+    // Viewport height fix: window.innerHeight is the actual visible area
+    function setAppHeight() {
+      document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+    }
+    setAppHeight();
+    window.addEventListener('resize', setAppHeight);
+
     // Service Worker registration
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js")

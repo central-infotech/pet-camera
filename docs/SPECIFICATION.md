@@ -302,7 +302,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 - **デスクトップ（Phase 1 ビューワー）**: 映像を最大表示
 - **デスクトップ（Phase 2 飼い主表示）**: 全画面黒背景に映像のみ表示
 - **モバイル（主要ユースケース）**: 映像を画面幅にフィット、音声コントロール・操作ボタンは下部に固定
-- **PWA スタンドアロン対応**: `height: 100dvh` + `overflow: hidden` でビューポートに完全収まるレイアウト。映像エリアは `min-height: 0` + absolute配置の `<img>` で flex 縮小を確実に許可し、ヘッダー・コントロール・フッターを配置した残り領域にフィットさせる。`viewport-fit=cover` は Android ナビゲーションバー干渉のため不使用。`env(safe-area-inset-bottom)` でジェスチャーナビゲーション領域に対応
+- **PWA スタンドアロン対応**: JavaScript で `window.innerHeight` を計測し CSS 変数 `--app-height` に設定。`100dvh` が Android PWA モードで不正確なため、実際の可視領域高さを使用する。ヘッダー・コントロール・フッターは `flex-shrink: 0` で固定高、映像エリアのみが残り領域にフィット（`min-height: 0` + absolute配置の `<img>`）
 
 ### 5.8 PWA 対応（Phase 3）
 
