@@ -84,6 +84,29 @@ header {
 
 .header-left .logo { font-weight: 700; font-size: 1.1rem; }
 
+.header-center { display: flex; align-items: center; }
+
+.btn-reload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.btn-reload:hover { border-color: var(--accent); color: var(--text); }
+.btn-reload:active { background: var(--border); }
+.btn-reload svg { flex-shrink: 0; }
+
 .header-right {
   display: flex;
   align-items: center;

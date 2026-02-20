@@ -158,6 +158,13 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 | F-16 | 映像リレー | サーバーがスマホから受信した JPEG フレームを PC 表示クライアントへリアルタイム中継する |
 | F-17 | 常時トーク | 既存の Talk 機能（F-12）を常時 ON モードで動作させ、スマホのマイク音声を PC スピーカーから継続的に再生する |
 
+### Phase 3 — PWA / UX 改善
+
+| # | 機能 | 説明 |
+|---|------|------|
+| F-18 | PWA 対応 | Web App Manifest + Service Worker でホーム画面追加・スタンドアロン起動に対応。Android Chrome / iOS Safari 両対応 |
+| F-19 | 画面更新ボタン | ヘッダー中央にアイコン付きの「画面更新」ボタンを配置。タップで `location.reload()` を実行 |
+
 ---
 
 ## 5. 画面設計
@@ -166,7 +173,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  🐾 Pet Camera            ● LIVE   00:03:42     │  ← ヘッダー（ステータス表示）
+│  🐾 Pet Camera    [↻ 画面更新]  ● LIVE 00:03:42 │  ← ヘッダー（中央に更新ボタン）
 ├─────────────────────────────────────────────────┤
 │                                                   │
 │            ┌──────────────────────┐               │
@@ -264,7 +271,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  🐾 Pet Camera            ● LIVE   00:03:42     │
+│  🐾 Pet Camera    [↻ 画面更新]  ● LIVE 00:03:42 │
 ├─────────────────────────────────────────────────┤
 │ ┌────────┐                                       │
 │ │ 自分の  │  ← PiP: 左上ワイプ表示               │
@@ -295,6 +302,40 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 - **デスクトップ（Phase 1 ビューワー）**: 映像を最大表示
 - **デスクトップ（Phase 2 飼い主表示）**: 全画面黒背景に映像のみ表示
 - **モバイル（主要ユースケース）**: 映像を画面幅にフィット、音声コントロール・操作ボタンは下部に固定
+
+### 5.8 PWA 対応（Phase 3）
+
+スマートフォンのホーム画面にアプリアイコンを追加し、ブラウザの URL バーなしのスタンドアロンモードで起動できるようにする。
+
+#### 対応プラットフォーム
+
+| プラットフォーム | 対応ブラウザ | ホーム画面追加 | スタンドアロン起動 |
+|-----------------|------------|--------------|------------------|
+| Android | Chrome | manifest.json による自動インストールバナー | `display: standalone` |
+| iOS | Safari | `apple-mobile-web-app-capable` メタタグ | ステータスバー: `black-translucent` |
+
+#### 構成ファイル
+
+- **manifest.json**: アプリ名・アイコン・表示モード・テーマカラーを定義
+- **sw.js（Service Worker）**: アプリシェル（HTML・CSS・JS・アイコン）をキャッシュ。ストリーミングデータ（MJPEG・WebSocket・API）はキャッシュしない
+- **アイコン**: 192x192（Android 標準）、512x512（スプラッシュスクリーン）、180x180（iOS apple-touch-icon）
+
+#### iOS 固有の設定
+
+```html
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pet Camera">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+```
+
+#### Service Worker 戦略
+
+| リソース種別 | キャッシュ戦略 | 理由 |
+|-------------|-------------|------|
+| ナビゲーション（HTML） | Network-first | 認証チェックを最優先。オフライン時はキャッシュからフォールバック |
+| 静的アセット（CSS/JS/画像） | Cache-first | 変更頻度が低く、キャッシュから高速に提供 |
+| ストリーミング・API | キャッシュしない | リアルタイムデータはキャッシュ不適 |
 
 ---
 
@@ -687,6 +728,8 @@ pet-camera/
 ├── data/
 │   └── webauthn_credentials.json  # WebAuthn クレデンシャル保存（.gitignore対象）
 ├── static/
+│   ├── manifest.json            # PWA マニフェスト
+│   ├── sw.js                    # Service Worker（アプリシェルキャッシュ）
 │   ├── css/
 │   │   └── style.css           # スタイルシート
 │   ├── js/
@@ -694,7 +737,10 @@ pet-camera/
 │   │   ├── audio.js            # 音声制御（Web Audio API / getUserMedia）
 │   │   └── display.js          # Phase 2: 飼い主表示画面の映像受信・描画ロジック
 │   └── img/
-│       └── favicon.ico         # ファビコン
+│       ├── icon-192.png        # PWA アイコン (192x192)
+│       ├── icon-512.png        # PWA アイコン (512x512)
+│       ├── apple-touch-icon.png # iOS ホーム画面アイコン (180x180)
+│       └── favicon.png         # ファビコン (32x32)
 ├── templates/
 │   ├── index.html              # メインページテンプレート
 │   ├── login.html              # 認証ページテンプレート

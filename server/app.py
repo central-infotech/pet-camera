@@ -87,6 +87,14 @@ setup_access_log(app)
 # ===========================================================================
 
 
+@app.route("/sw.js")
+def service_worker():
+    """Serve service worker from root scope."""
+    return send_from_directory(app.static_folder, "sw.js",
+                               mimetype="application/javascript",
+                               max_age=0)
+
+
 @app.route("/")
 def index():
     if is_authenticated():
