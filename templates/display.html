@@ -11,6 +11,26 @@
   <div id="display-container">
     <img id="display-video" alt="Owner Video">
     <div id="display-status">接続待機中...</div>
+
+    <!-- Settings gear button (top-right corner) -->
+    <button id="btn-display-settings" class="display-settings-btn" title="設定">&#x2699;</button>
+  </div>
+
+  <!-- Settings panel overlay -->
+  <div id="display-settings-panel" class="display-panel" hidden>
+    <div class="panel-header">
+      <h2>ディスプレイ設定</h2>
+      <button id="btn-display-settings-close" class="btn-close">&times;</button>
+    </div>
+    <div class="panel-body">
+      <div id="display-passkey-section" hidden>
+        <label style="color: var(--text); font-weight: 600;">パスキー（生体認証）</label>
+        <p style="font-size: 0.8rem; margin: 0.25rem 0 0.5rem;" id="display-passkey-status">確認中...</p>
+        <button id="btn-display-passkey-register" class="btn btn-primary" style="width: 100%; justify-content: center;">
+          &#x1F511; このデバイスを登録
+        </button>
+      </div>
+    </div>
   </div>
 
   <script src="/static/js/display.js"></script>

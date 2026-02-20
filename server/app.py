@@ -300,9 +300,10 @@ def webauthn_credentials():
 # --- Phase 2: Display route ---
 
 @app.route("/display")
-@login_required
 def display():
-    return render_template("display.html")
+    if is_authenticated():
+        return render_template("display.html")
+    return render_template("login.html")
 
 
 # ===========================================================================
