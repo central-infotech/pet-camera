@@ -248,6 +248,8 @@
   // ---- Phase 2: Owner Video (Show Face) ----
   const btnShowFace = document.getElementById('btn-show-face');
   const ownerVideoStatus = document.getElementById('owner-video-status');
+  const ownerPip = document.getElementById('owner-pip');
+  const ownerPipVideo = document.getElementById('owner-pip-video');
   let videoSocket = null;
   let ownerVideoStream = null;
   let ownerVideoElement = null;
@@ -285,38 +287,60 @@
     ownerVideoElement.muted = true;
     await ownerVideoElement.play();
 
+    // Show PiP self-preview
+    ownerPipVideo.srcObject = ownerVideoStream;
+    ownerPipVideo.play();
+    ownerPip.hidden = false;
+
     // Create canvas for JPEG encoding
     ownerCanvas = document.createElement('canvas');
     ownerCanvas.width = 640;
     ownerCanvas.height = 480;
     ownerCanvasCtx = ownerCanvas.getContext('2d');
 
-    // Connect to /video namespace as sender
+    // Connect to /video namespace as sender with auto-reconnect
     videoSocket = io('/video', {
       transports: ['websocket'],
       auth: { role: 'sender' },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.3,
+      timeout: 20000,
     });
 
     videoSocket.on('connect', () => {
       console.log('[OwnerVideo] Socket connected');
       videoSocket.emit('video_send_start', { width: 640, height: 480, fps: 10 });
-      isSendingVideo = true;
-      btnShowFace.classList.add('active');
-      ownerVideoStatus.textContent = '送信中: 640x480 / 10fps';
 
-      // Start audio talk (continuous mode)
-      PetAudio.startContinuousTalk(ownerVideoStream);
+      if (!isSendingVideo) {
+        // First connect
+        isSendingVideo = true;
+        btnShowFace.classList.add('active');
 
-      // Disable listen and talk buttons during owner video
-      btnListen.disabled = true;
-      btnTalk.disabled = true;
-      if (PetAudio.isListening) {
-        PetAudio.stopListening();
-        btnListen.classList.remove('active');
+        // Start audio talk (continuous mode)
+        PetAudio.startContinuousTalk(ownerVideoStream);
+
+        // Disable listen and talk buttons during owner video
+        btnListen.disabled = true;
+        btnTalk.disabled = true;
+        if (PetAudio.isListening) {
+          PetAudio.stopListening();
+          btnListen.classList.remove('active');
+        }
       }
 
-      // Start frame capture
+      ownerVideoStatus.textContent = '送信中: 640x480 / 10fps';
+
+      // Start frame capture (clear existing interval to avoid duplicates)
+      if (captureInterval) clearInterval(captureInterval);
       captureInterval = setInterval(captureAndSend, 100); // 10fps
+    });
+
+    videoSocket.io.on('reconnect_attempt', (attempt) => {
+      console.log('[OwnerVideo] Reconnect attempt:', attempt);
+      ownerVideoStatus.textContent = `再接続中...（${attempt}回目）`;
     });
 
     videoSocket.on('video_error', (err) => {
@@ -336,9 +360,16 @@
       }
     });
 
-    videoSocket.on('disconnect', () => {
-      console.log('[OwnerVideo] Socket disconnected');
-      if (isSendingVideo) stopOwnerVideo();
+    videoSocket.on('disconnect', (reason) => {
+      console.log('[OwnerVideo] Socket disconnected:', reason);
+      // Don't stop — let auto-reconnect handle it
+      if (captureInterval) {
+        clearInterval(captureInterval);
+        captureInterval = null;
+      }
+      if (isSendingVideo) {
+        ownerVideoStatus.textContent = '切断 — 再接続中...';
+      }
     });
   }
 
@@ -375,6 +406,10 @@
     // Re-enable listen and talk buttons
     btnListen.disabled = false;
     btnTalk.disabled = false;
+
+    // Hide PiP self-preview
+    ownerPip.hidden = true;
+    ownerPipVideo.srcObject = null;
 
     if (ownerVideoStream) {
       ownerVideoStream.getTracks().forEach(t => t.stop());
@@ -444,4 +479,33 @@
       }
     });
   }
+
+  // ---- Visibility change: recover video sending after background ----
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // If we were sending video, check if everything is still alive
+      if (isSendingVideo && videoSocket && !videoSocket.connected) {
+        console.log('[OwnerVideo] Page visible, reconnecting video socket...');
+        videoSocket.connect();
+      }
+      // Check if MediaStream tracks are still live
+      if (isSendingVideo && ownerVideoStream) {
+        const videoTrack = ownerVideoStream.getVideoTracks()[0];
+        if (videoTrack && videoTrack.readyState === 'ended') {
+          console.log('[OwnerVideo] Video track ended, restarting...');
+          stopOwnerVideo();
+          // Auto-restart is not safe here (needs user gesture), just notify
+          ownerVideoStatus.textContent = 'カメラが停止しました。再度「顔を見せる」を押してください。';
+        }
+      }
+    }
+  });
+
+  // ---- Network recovery ----
+  window.addEventListener('online', () => {
+    console.log('[App] Network online');
+    if (isSendingVideo && videoSocket && !videoSocket.connected) {
+      videoSocket.connect();
+    }
+  });
 })();

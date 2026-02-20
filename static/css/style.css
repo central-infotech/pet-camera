@@ -258,6 +258,25 @@ footer {
   color: var(--text-muted);
 }
 
+/* ---- Owner Video PiP (Phase 2) ---- */
+.owner-pip {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  width: 120px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.owner-pip video {
+  width: 100%;
+  display: block;
+  transform: scaleX(-1);
+}
+
 /* ---- Owner Video Controls (Phase 2) ---- */
 .owner-video-controls .status-text {
   font-size: 0.75rem;

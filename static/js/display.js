@@ -1,6 +1,7 @@
 /**
  * Pet Camera — Display page (Phase 2)
  * Receives video frames from smartphone via Socket.IO and renders them.
+ * Includes auto-reconnect, Wake Lock re-acquisition, and visibility recovery.
  */
 (() => {
   const img = document.getElementById('display-video');
@@ -9,11 +10,19 @@
   let socket = null;
   let currentBlobUrl = null;
   let hideStatusTimer = null;
+  let wakeLock = null;
 
+  // ---- Socket.IO connection with resilience ----
   function connect() {
     socket = io('/video', {
       transports: ['websocket'],
       auth: { role: 'display' },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.3,
+      timeout: 20000,
     });
 
     socket.on('connect', () => {
@@ -24,29 +33,49 @@
 
     socket.on('connect_error', (err) => {
       console.error('[Display] Connection error:', err.message);
-      statusEl.textContent = '接続エラー';
+      statusEl.textContent = '接続エラー — 再接続中...';
+      statusEl.classList.remove('hidden');
+    });
+
+    socket.io.on('reconnect_attempt', (attempt) => {
+      console.log('[Display] Reconnect attempt:', attempt);
+      statusEl.textContent = `再接続中...（${attempt}回目）`;
+      statusEl.classList.remove('hidden');
+    });
+
+    socket.io.on('reconnect', (attempt) => {
+      console.log('[Display] Reconnected after', attempt, 'attempts');
+    });
+
+    socket.io.on('reconnect_failed', () => {
+      console.error('[Display] Reconnect failed');
+      statusEl.textContent = '接続に失敗しました。ページを再読み込みしてください。';
       statusEl.classList.remove('hidden');
     });
 
     socket.on('video_frame', (data) => {
-      // Revoke previous blob URL to prevent memory leak
-      if (currentBlobUrl) {
-        URL.revokeObjectURL(currentBlobUrl);
+      try {
+        // Revoke previous blob URL to prevent memory leak
+        if (currentBlobUrl) {
+          URL.revokeObjectURL(currentBlobUrl);
+        }
+
+        const blob = new Blob([data], { type: 'image/jpeg' });
+        currentBlobUrl = URL.createObjectURL(blob);
+        img.src = currentBlobUrl;
+
+        // Hide status text when receiving frames
+        statusEl.classList.add('hidden');
+
+        // Reset the hide timer — show status again if frames stop
+        clearTimeout(hideStatusTimer);
+        hideStatusTimer = setTimeout(() => {
+          statusEl.textContent = '映像が途切れました';
+          statusEl.classList.remove('hidden');
+        }, 3000);
+      } catch (err) {
+        console.error('[Display] Frame processing error:', err);
       }
-
-      const blob = new Blob([data], { type: 'image/jpeg' });
-      currentBlobUrl = URL.createObjectURL(blob);
-      img.src = currentBlobUrl;
-
-      // Hide status text when receiving frames
-      statusEl.classList.add('hidden');
-
-      // Reset the hide timer — show status again if frames stop
-      clearTimeout(hideStatusTimer);
-      hideStatusTimer = setTimeout(() => {
-        statusEl.textContent = '映像が途切れました';
-        statusEl.classList.remove('hidden');
-      }, 3000);
     });
 
     socket.on('video_status', (status) => {
@@ -57,23 +86,56 @@
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log('[Display] Disconnected');
+    socket.on('disconnect', (reason) => {
+      console.log('[Display] Disconnected:', reason);
       statusEl.textContent = '切断されました — 再接続中...';
       statusEl.classList.remove('hidden');
     });
   }
 
-  // Try to keep screen awake using Wake Lock API
+  // ---- Wake Lock with re-acquisition ----
   async function requestWakeLock() {
     if (!('wakeLock' in navigator)) return;
     try {
-      await navigator.wakeLock.request('screen');
+      wakeLock = await navigator.wakeLock.request('screen');
       console.log('[Display] Screen Wake Lock acquired');
+      wakeLock.addEventListener('release', () => {
+        console.log('[Display] Wake Lock released');
+        wakeLock = null;
+      });
     } catch (err) {
       console.log('[Display] Wake Lock not available:', err.message);
     }
   }
+
+  // ---- Visibility change: re-acquire Wake Lock + check socket ----
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // Re-acquire Wake Lock
+      if (!wakeLock) {
+        requestWakeLock();
+      }
+      // Ensure Socket.IO is connected
+      if (socket && !socket.connected) {
+        console.log('[Display] Page visible, reconnecting...');
+        socket.connect();
+      }
+    }
+  });
+
+  // ---- Network recovery ----
+  window.addEventListener('online', () => {
+    console.log('[Display] Network online');
+    if (socket && !socket.connected) {
+      socket.connect();
+    }
+  });
+
+  window.addEventListener('offline', () => {
+    console.log('[Display] Network offline');
+    statusEl.textContent = 'ネットワーク切断 — 復帰待ち...';
+    statusEl.classList.remove('hidden');
+  });
 
   // ---- Settings panel ----
   const btnSettings = document.getElementById('btn-display-settings');

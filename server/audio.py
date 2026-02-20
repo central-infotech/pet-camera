@@ -3,11 +3,16 @@
 import logging
 import queue
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
 
 from . import config
+
+# Retry settings for audio device initialization
+DEVICE_RETRY_INTERVAL = 10  # seconds between retries
+DEVICE_MAX_RETRIES = 6      # max retries (60 seconds total)
 
 logger = logging.getLogger(__name__)
 
@@ -38,24 +43,32 @@ class AudioCapture:
     def start(self):
         if self._running:
             return
-        try:
-            devices = sd.query_devices()
-            default_in = sd.default.device[0]
-            logger.info("AudioCapture: available devices:\n%s", devices)
-            logger.info("AudioCapture: using default input device: %s", default_in)
-            self._stream = sd.InputStream(
-                samplerate=config.AUDIO_SAMPLE_RATE,
-                channels=config.AUDIO_CHANNELS,
-                dtype="int16",
-                blocksize=config.AUDIO_CHUNK_SIZE,
-                callback=self._audio_callback,
-            )
-            self._stream.start()
-            self._running = True
-            logger.info("AudioCapture: microphone stream started (rate=%d, ch=%d, chunk=%d)",
-                        config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
-        except Exception:
-            logger.exception("AudioCapture: failed to start microphone")
+        for attempt in range(1, DEVICE_MAX_RETRIES + 1):
+            try:
+                devices = sd.query_devices()
+                default_in = sd.default.device[0]
+                logger.info("AudioCapture: available devices:\n%s", devices)
+                logger.info("AudioCapture: using default input device: %s", default_in)
+                self._stream = sd.InputStream(
+                    samplerate=config.AUDIO_SAMPLE_RATE,
+                    channels=config.AUDIO_CHANNELS,
+                    dtype="int16",
+                    blocksize=config.AUDIO_CHUNK_SIZE,
+                    callback=self._audio_callback,
+                )
+                self._stream.start()
+                self._running = True
+                logger.info("AudioCapture: microphone stream started (rate=%d, ch=%d, chunk=%d)",
+                            config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
+                return
+            except Exception:
+                logger.exception("AudioCapture: failed to start microphone (attempt %d/%d)",
+                                 attempt, DEVICE_MAX_RETRIES)
+                if attempt < DEVICE_MAX_RETRIES:
+                    logger.info("AudioCapture: retrying in %d seconds...", DEVICE_RETRY_INTERVAL)
+                    time.sleep(DEVICE_RETRY_INTERVAL)
+        logger.error("AudioCapture: all %d attempts exhausted, microphone unavailable",
+                      DEVICE_MAX_RETRIES)
 
     def stop(self):
         self._running = False
@@ -100,21 +113,29 @@ class AudioPlayer:
     def start(self):
         if self._running:
             return
-        try:
-            default_out = sd.default.device[1]
-            logger.info("AudioPlayer: using default output device: %s", default_out)
-            self._stream = sd.OutputStream(
-                samplerate=config.AUDIO_SAMPLE_RATE,
-                channels=config.AUDIO_CHANNELS,
-                dtype="int16",
-                blocksize=config.AUDIO_CHUNK_SIZE,
-            )
-            self._stream.start()
-            self._running = True
-            logger.info("AudioPlayer: speaker stream started (rate=%d, ch=%d, chunk=%d)",
-                        config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
-        except Exception:
-            logger.exception("AudioPlayer: failed to start speaker")
+        for attempt in range(1, DEVICE_MAX_RETRIES + 1):
+            try:
+                default_out = sd.default.device[1]
+                logger.info("AudioPlayer: using default output device: %s", default_out)
+                self._stream = sd.OutputStream(
+                    samplerate=config.AUDIO_SAMPLE_RATE,
+                    channels=config.AUDIO_CHANNELS,
+                    dtype="int16",
+                    blocksize=config.AUDIO_CHUNK_SIZE,
+                )
+                self._stream.start()
+                self._running = True
+                logger.info("AudioPlayer: speaker stream started (rate=%d, ch=%d, chunk=%d)",
+                            config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
+                return
+            except Exception:
+                logger.exception("AudioPlayer: failed to start speaker (attempt %d/%d)",
+                                 attempt, DEVICE_MAX_RETRIES)
+                if attempt < DEVICE_MAX_RETRIES:
+                    logger.info("AudioPlayer: retrying in %d seconds...", DEVICE_RETRY_INTERVAL)
+                    time.sleep(DEVICE_RETRY_INTERVAL)
+        logger.error("AudioPlayer: all %d attempts exhausted, speaker unavailable",
+                      DEVICE_MAX_RETRIES)
 
     def stop(self):
         self._running = False
@@ -131,8 +152,22 @@ class AudioPlayer:
             samples = np.frombuffer(pcm_data, dtype=np.int16)
             samples = samples.reshape(-1, config.AUDIO_CHANNELS)
             self._stream.write(samples)
+        except sd.PortAudioError:
+            logger.exception("AudioPlayer: PortAudio error, attempting stream restart")
+            self._restart_stream()
         except Exception:
             logger.exception("AudioPlayer: playback error")
+
+    def _restart_stream(self):
+        """Attempt to restart the output stream after a device error."""
+        try:
+            if self._stream:
+                self._stream.close()
+                self._stream = None
+            self._running = False
+            self.start()
+        except Exception:
+            logger.exception("AudioPlayer: restart failed")
 
     def acquire_talk(self) -> bool:
         """Try to acquire talk slot (only 1 client can talk at a time)."""
