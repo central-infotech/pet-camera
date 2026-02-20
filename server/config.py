@@ -30,6 +30,13 @@ AUDIO_SAMPLE_RATE = 16000
 AUDIO_CHANNELS = 1
 AUDIO_CHUNK_SIZE = 1024  # samples per chunk (~64ms at 16kHz)
 
+# Video relay (Phase 2)
+VIDEO_FRAME_MAX_BYTES = 200 * 1024  # 200 KB max per frame
+VIDEO_MAX_FPS = 15  # server-side rate limit
+
+# Display session
+DISPLAY_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
+
 # Snapshots
 SNAPSHOT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "snapshots")
 SNAPSHOT_MAX_BYTES = 500 * 1024 * 1024  # 500 MB

@@ -21,6 +21,9 @@ const PetAudio = (() => {
   let _talkSource = null;
   let _talkProcessor = null;
 
+  // Continuous talk mode (Phase 2)
+  let isContinuousTalking = false;
+
   function connect() {
     if (socket && socket.connected) return;
 
@@ -207,12 +210,79 @@ const PetAudio = (() => {
     volume = Math.max(0, Math.min(1, v));
   }
 
+  /**
+   * Start continuous talk using an existing MediaStream (Phase 2).
+   * Used by "Show Face" feature — reuses the audio track from getUserMedia({video, audio}).
+   */
+  function startContinuousTalk(existingStream) {
+    if (isContinuousTalking) return;
+    connect();
+    ensureAudioContext();
+
+    // Extract audio tracks from the existing stream
+    const audioTracks = existingStream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      console.warn('[Audio] No audio tracks in stream for continuous talk');
+      return;
+    }
+
+    const audioStream = new MediaStream(audioTracks);
+
+    isContinuousTalking = true;
+    isTalking = true;
+    socket.emit('audio_talk_start');
+
+    const source = audioCtx.createMediaStreamSource(audioStream);
+    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+    const ctxRate = audioCtx.sampleRate;
+
+    processor.onaudioprocess = (e) => {
+      if (!isContinuousTalking || !socket) return;
+      const float32 = e.inputBuffer.getChannelData(0);
+      const resampled = resample(float32, ctxRate, SERVER_RATE);
+      const int16 = new Int16Array(resampled.length);
+      for (let i = 0; i < resampled.length; i++) {
+        const s = Math.max(-1, Math.min(1, resampled[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      socket.emit('audio_talk', int16.buffer);
+    };
+
+    source.connect(processor);
+    processor.connect(audioCtx.destination);
+
+    _talkSource = source;
+    _talkProcessor = processor;
+    // Note: We don't store mediaStream here — it's owned by the caller (app.js)
+  }
+
+  function stopContinuousTalk() {
+    if (!isContinuousTalking) return;
+    isContinuousTalking = false;
+    isTalking = false;
+
+    if (socket) socket.emit('audio_talk_stop');
+
+    if (_talkProcessor) {
+      _talkProcessor.disconnect();
+      _talkProcessor.onaudioprocess = null;
+      _talkProcessor = null;
+    }
+    if (_talkSource) {
+      _talkSource.disconnect();
+      _talkSource = null;
+    }
+    // Don't stop mediaStream tracks — owned by caller
+  }
+
   return {
     connect,
     startListening,
     stopListening,
     startTalking,
     stopTalking,
+    startContinuousTalk,
+    stopContinuousTalk,
     setVolume,
     get isListening() { return isListening; },
     get isTalking() { return isTalking; },

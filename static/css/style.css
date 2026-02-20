@@ -258,6 +258,60 @@ footer {
   color: var(--text-muted);
 }
 
+/* ---- Owner Video Controls (Phase 2) ---- */
+.owner-video-controls .status-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ---- Display Page (Phase 2) ---- */
+.display-page {
+  background: #000;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+#display-container {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+#display-video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+#display-status {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  transition: opacity 0.3s;
+}
+
+#display-status.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 480px) {
   .controls { padding: 0.4rem 0.5rem; gap: 0.35rem; }

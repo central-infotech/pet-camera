@@ -245,6 +245,149 @@
   }
   checkPasskeySupport();
 
+  // ---- Phase 2: Owner Video (Show Face) ----
+  const btnShowFace = document.getElementById('btn-show-face');
+  const ownerVideoStatus = document.getElementById('owner-video-status');
+  let videoSocket = null;
+  let ownerVideoStream = null;
+  let ownerVideoElement = null;
+  let ownerCanvas = null;
+  let ownerCanvasCtx = null;
+  let captureInterval = null;
+  let isSendingVideo = false;
+
+  if (btnShowFace) {
+    btnShowFace.addEventListener('click', () => {
+      if (isSendingVideo) {
+        stopOwnerVideo();
+      } else {
+        startOwnerVideo();
+      }
+    });
+  }
+
+  async function startOwnerVideo() {
+    try {
+      ownerVideoStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 },
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (err) {
+      console.error('[OwnerVideo] Camera access denied:', err);
+      alert('カメラへのアクセスが拒否されました。ブラウザの設定を確認してください。');
+      return;
+    }
+
+    // Create hidden video element for canvas capture
+    ownerVideoElement = document.createElement('video');
+    ownerVideoElement.srcObject = ownerVideoStream;
+    ownerVideoElement.setAttribute('playsinline', '');
+    ownerVideoElement.muted = true;
+    await ownerVideoElement.play();
+
+    // Create canvas for JPEG encoding
+    ownerCanvas = document.createElement('canvas');
+    ownerCanvas.width = 640;
+    ownerCanvas.height = 480;
+    ownerCanvasCtx = ownerCanvas.getContext('2d');
+
+    // Connect to /video namespace as sender
+    videoSocket = io('/video', {
+      transports: ['websocket'],
+      auth: { role: 'sender' },
+    });
+
+    videoSocket.on('connect', () => {
+      console.log('[OwnerVideo] Socket connected');
+      videoSocket.emit('video_send_start', { width: 640, height: 480, fps: 10 });
+      isSendingVideo = true;
+      btnShowFace.classList.add('active');
+      ownerVideoStatus.textContent = '送信中: 640x480 / 10fps';
+
+      // Start audio talk (continuous mode)
+      PetAudio.startContinuousTalk(ownerVideoStream);
+
+      // Disable listen and talk buttons during owner video
+      btnListen.disabled = true;
+      btnTalk.disabled = true;
+      if (PetAudio.isListening) {
+        PetAudio.stopListening();
+        btnListen.classList.remove('active');
+      }
+
+      // Start frame capture
+      captureInterval = setInterval(captureAndSend, 100); // 10fps
+    });
+
+    videoSocket.on('video_error', (err) => {
+      console.error('[OwnerVideo] Error:', err);
+      if (err.code === 'SENDER_BUSY') {
+        alert('別のデバイスが既に映像を送信中です');
+        stopOwnerVideo();
+      }
+    });
+
+    videoSocket.on('video_status', (status) => {
+      console.log('[OwnerVideo] Status:', status);
+      if (status.display_clients !== undefined) {
+        ownerVideoStatus.textContent = isSendingVideo
+          ? `送信中: 640x480 / 10fps / 接続PC: ${status.display_clients}台`
+          : '';
+      }
+    });
+
+    videoSocket.on('disconnect', () => {
+      console.log('[OwnerVideo] Socket disconnected');
+      if (isSendingVideo) stopOwnerVideo();
+    });
+  }
+
+  function captureAndSend() {
+    if (!ownerVideoElement || !ownerCanvasCtx || !videoSocket || !videoSocket.connected) return;
+
+    ownerCanvasCtx.drawImage(ownerVideoElement, 0, 0, 640, 480);
+    ownerCanvas.toBlob((blob) => {
+      if (blob && videoSocket && videoSocket.connected) {
+        blob.arrayBuffer().then((buf) => {
+          videoSocket.emit('video_frame', buf);
+        });
+      }
+    }, 'image/jpeg', 0.6);
+  }
+
+  function stopOwnerVideo() {
+    isSendingVideo = false;
+
+    if (captureInterval) {
+      clearInterval(captureInterval);
+      captureInterval = null;
+    }
+
+    if (videoSocket) {
+      videoSocket.emit('video_send_stop');
+      videoSocket.disconnect();
+      videoSocket = null;
+    }
+
+    // Stop continuous talk
+    PetAudio.stopContinuousTalk();
+
+    // Re-enable listen and talk buttons
+    btnListen.disabled = false;
+    btnTalk.disabled = false;
+
+    if (ownerVideoStream) {
+      ownerVideoStream.getTracks().forEach(t => t.stop());
+      ownerVideoStream = null;
+    }
+    ownerVideoElement = null;
+    ownerCanvas = null;
+    ownerCanvasCtx = null;
+
+    btnShowFace.classList.remove('active');
+    ownerVideoStatus.textContent = '';
+  }
+
   if (btnPasskeyRegister) {
     btnPasskeyRegister.addEventListener('click', async () => {
       btnPasskeyRegister.disabled = true;

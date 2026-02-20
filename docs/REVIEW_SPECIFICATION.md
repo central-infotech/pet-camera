@@ -160,3 +160,94 @@
 2. Cookie セキュリティ属性と `/api/auth` レート制限の定義
 3. HTTPS（証明書運用含む）実装手順の詳細化
 4. スナップショット命名の一意性保証
+
+---
+
+# SPECIFICATION レビュー結果（第3弾: Phase2設計）
+
+## 対象
+
+- レビュー対象: `docs/SPECIFICATION.md`
+- レビュー範囲: Phase 2「飼い主表示モード（スマホ → PC 逆方向ストリーミング）」の設計
+
+## 総評
+
+- Phase2の目的、通信経路、UI、イベント設計が一貫しており、実装着手しやすい粒度まで具体化されています。
+- 一方で「単一送信者制御」「常時トーク時の排他制御」「運用時の認証維持」に未定義があり、実装差・運用停止リスクが残ります。
+
+## Findings（重大度順）
+
+### High 1: 単一送信者（先勝ち）制御の状態遷移が未定義
+
+- 根拠: `docs/SPECIFICATION.md:394`, `docs/SPECIFICATION.md:395`, `docs/SPECIFICATION.md:894`
+- 問題:
+  - 「1台のみ送信可」は定義されているが、送信権の取得/喪失条件が不足
+  - `video_send_stop` が来ない異常終了（回線断・アプリ強制終了）時の解放条件が未定義
+- 影響:
+  - 送信権が取りっぱなしになり、他端末が送信開始できない
+- 推奨:
+  - サーバー側で `active_sender_sid` を管理し、`disconnect`/heartbeat timeout で強制解放
+  - 拒否時に `video_status` だけでなく明示エラーコード（例: `SENDER_BUSY`）を返す
+
+### High 2: `/video` の認可粒度が粗く、表示画面の乗っ取りリスクがある
+
+- 根拠: `docs/SPECIFICATION.md:386`, `docs/SPECIFICATION.md:396`, `docs/SPECIFICATION.md:397`
+- 問題:
+  - 認証要件はあるが、送信者と表示端末の役割分離（認可）が定義されていない
+  - 認証済み任意端末が `video_frame` 送信や `display_join` 可能に見える
+- 影響:
+  - 同一アカウント内の別端末や意図しない端末が表示内容を上書きしうる
+- 推奨:
+  - 役割（`sender` / `display`）をセッション属性またはトークンスコープで分離
+  - `/display` 用端末の許可リストまたは固定デバイスIDを導入
+
+### Medium 1: 「顔を見せる中は Listen 自動OFF」の強制仕様が不足
+
+- 根拠: `docs/SPECIFICATION.md:893`, `docs/SPECIFICATION.md:1040`, `docs/SPECIFICATION.md:364`
+- 問題:
+  - 設計方針はあるが、どのレイヤーで強制するか（UIだけ/サーバー強制）が未定義
+  - 複数クライアント時に、別端末の Listen をどう扱うかが不明
+- 影響:
+  - 実装差でハウリング防止が不完全になりうる
+- 推奨:
+  - サーバー側で `video_send_start` 受信時に Listen を制御し、`audio_listen_start` を条件付き拒否
+  - 拒否時の理由コード（例: `LISTEN_BLOCKED_DURING_OWNER_VIDEO`）を規定
+
+### Medium 2: Phase2運用時の認証維持（24時間TTL）と無人表示運用の整合が不明確
+
+- 根拠: `docs/SPECIFICATION.md:313`, `docs/SPECIFICATION.md:325`, `docs/SPECIFICATION.md:258`
+- 問題:
+  - `/display` は認証必須だが、TTL 24時間超過時の再認証導線が未定義
+  - ケージ横PCの常時表示運用とログイン維持方針が不足
+- 影響:
+  - 無人運用中にセッション失効で表示停止する可能性
+- 推奨:
+  - `/display` 専用の長期セッション/デバイス証明方式、または失効時の自動復帰手順を明記
+
+### Medium 3: HTTPS利用方針に文書内不整合が残る
+
+- 根拠: `docs/SPECIFICATION.md:741`, `docs/SPECIFICATION.md:825`, `docs/SPECIFICATION.md:868`
+- 問題:
+  - アクセス手順に `http://100.x.x.x:5555` が残っており、他節の「本番はHTTPS必須」と矛盾
+- 影響:
+  - 実運用でHTTPアクセスが混入し、ブラウザ機能制限や接続不具合の原因になる
+- 推奨:
+  - 手順を `https://<machine>.<tailnet>.ts.net:5555` に統一し、HTTPは開発限定と明記
+
+### Low 1: `video_frame` の受信上限・防御要件が不足
+
+- 根拠: `docs/SPECIFICATION.md:392`, `docs/SPECIFICATION.md:405`, `docs/SPECIFICATION.md:406`
+- 問題:
+  - フレームサイズ目安はあるが、最大許容サイズ/送信レート超過時の制御が未定義
+- 影響:
+  - 実装次第でメモリ圧迫・遅延増大が発生しうる
+- 推奨:
+  - 1フレーム上限（例: 200KB）と最大FPS超過時のドロップ方針を規定
+
+## 第3弾 優先修正順（Phase2）
+
+1. 単一送信者制御の状態遷移（取得・解放・タイムアウト・拒否コード）を仕様化
+2. `/video` の認可モデル（sender/display役割分離）を追加
+3. 常時トーク時の Listen 強制制御をサーバー仕様として明記
+4. `/display` の無人運用を想定した認証維持方式を定義
+5. HTTP/HTTPS 手順の記述を統一

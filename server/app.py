@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
-from flask_socketio import SocketIO, disconnect, emit
+from flask_socketio import SocketIO, disconnect, emit, join_room, leave_room
 
 from . import config
 from .auth import (
@@ -63,6 +63,13 @@ _connected_clients: set[str] = set()
 
 # Track audio listeners: {sid: queue}
 _audio_listeners: dict = {}
+
+# Phase 2: Video relay state
+_active_sender_sid: str | None = None  # SID of the client currently sending video
+_display_clients: set[str] = set()  # SIDs of display clients
+_video_client_roles: dict[str, str] = {}  # {sid: 'sender' | 'display'}
+_sender_listen_blocked: bool = False  # Whether listen is blocked for sender
+_last_frame_time: float = 0.0  # Rate limiting for incoming frames
 
 # ---------------------------------------------------------------------------
 # Ensure directories
@@ -290,6 +297,14 @@ def webauthn_credentials():
     return jsonify({"count": webauthn_auth.get_credential_count()})
 
 
+# --- Phase 2: Display route ---
+
+@app.route("/display")
+@login_required
+def display():
+    return render_template("display.html")
+
+
 # ===========================================================================
 # Snapshot helpers
 # ===========================================================================
@@ -348,6 +363,18 @@ def audio_disconnect():
 @socketio.on("audio_listen_start", namespace="/audio")
 def audio_listen_start():
     sid = request.sid
+
+    # Phase 2: Block listen if this client is the active video sender
+    if _sender_listen_blocked and _active_sender_sid is not None:
+        # Check if the audio SID corresponds to the sender
+        # (same client IP heuristic — sender and audio connect from same device)
+        emit("audio_status", {
+            "listening": False,
+            "listen_blocked": True,
+            "reason": "LISTEN_BLOCKED_DURING_OWNER_VIDEO",
+        })
+        return
+
     if sid in _audio_listeners:
         return  # Already listening
 
@@ -413,6 +440,136 @@ def _stream_audio_to_client(sid: str, q):
             continue
         except Exception:
             break
+
+
+# ===========================================================================
+# Socket.IO — Video namespace (Phase 2)
+# ===========================================================================
+
+@socketio.on("connect", namespace="/video")
+def video_connect(auth_data=None):
+    global _active_sender_sid
+    if not validate_socketio_auth(auth_data):
+        logger.warning("Video WS: rejected unauthenticated connection from %s", request.remote_addr)
+        disconnect()
+        return False
+
+    # Validate role
+    role = (auth_data or {}).get("role") if auth_data else None
+    if role not in ("sender", "display"):
+        logger.warning("Video WS: rejected connection without valid role from %s", request.remote_addr)
+        disconnect()
+        return False
+
+    sid = request.sid
+    _video_client_roles[sid] = role
+    logger.info("Video WS: %s connected (sid=%s, role=%s)", request.remote_addr, sid, role)
+
+
+@socketio.on("disconnect", namespace="/video")
+def video_disconnect():
+    global _active_sender_sid, _sender_listen_blocked
+    sid = request.sid
+    role = _video_client_roles.pop(sid, None)
+
+    if role == "sender" and _active_sender_sid == sid:
+        _active_sender_sid = None
+        _sender_listen_blocked = False
+        logger.info("Video WS: sender disconnected, releasing send slot (sid=%s)", sid)
+        socketio.emit("video_status", _build_video_status(), namespace="/video")
+
+    if role == "display":
+        _display_clients.discard(sid)
+        logger.info("Video WS: display client left (sid=%s, remaining=%d)", sid, len(_display_clients))
+        socketio.emit("video_status", _build_video_status(), namespace="/video")
+
+
+@socketio.on("video_send_start", namespace="/video")
+def video_send_start(data=None):
+    global _active_sender_sid, _sender_listen_blocked
+    sid = request.sid
+
+    if _video_client_roles.get(sid) != "sender":
+        return
+
+    if _active_sender_sid is not None and _active_sender_sid != sid:
+        emit("video_error", {"code": "SENDER_BUSY", "message": "Another device is already sending"})
+        return
+
+    _active_sender_sid = sid
+    _sender_listen_blocked = True
+    info = data if isinstance(data, dict) else {}
+    logger.info("Video WS: send started (sid=%s, %s)", sid,
+                f"{info.get('width', '?')}x{info.get('height', '?')}@{info.get('fps', '?')}fps")
+    socketio.emit("video_status", _build_video_status(), namespace="/video")
+
+
+@socketio.on("video_send_stop", namespace="/video")
+def video_send_stop():
+    global _active_sender_sid, _sender_listen_blocked
+    sid = request.sid
+
+    if _active_sender_sid == sid:
+        _active_sender_sid = None
+        _sender_listen_blocked = False
+        logger.info("Video WS: send stopped (sid=%s)", sid)
+        socketio.emit("video_status", _build_video_status(), namespace="/video")
+
+
+@socketio.on("video_frame", namespace="/video")
+def video_frame(data):
+    global _last_frame_time
+    sid = request.sid
+
+    # Only accept from active sender
+    if _video_client_roles.get(sid) != "sender" or _active_sender_sid != sid:
+        return
+
+    if not isinstance(data, (bytes, bytearray)):
+        return
+
+    # Frame size limit
+    if len(data) > config.VIDEO_FRAME_MAX_BYTES:
+        return
+
+    # Rate limit
+    now = time.time()
+    min_interval = 1.0 / config.VIDEO_MAX_FPS
+    if now - _last_frame_time < min_interval:
+        return
+    _last_frame_time = now
+
+    # Relay to all display clients
+    for display_sid in list(_display_clients):
+        socketio.emit("video_frame", data, namespace="/video", to=display_sid)
+
+
+@socketio.on("display_join", namespace="/video")
+def display_join():
+    sid = request.sid
+    if _video_client_roles.get(sid) != "display":
+        return
+
+    _display_clients.add(sid)
+    join_room("display", sid=sid, namespace="/video")
+    logger.info("Video WS: display client joined (sid=%s, total=%d)", sid, len(_display_clients))
+    emit("video_status", _build_video_status())
+
+
+@socketio.on("display_leave", namespace="/video")
+def display_leave():
+    sid = request.sid
+    _display_clients.discard(sid)
+    leave_room("display", sid=sid, namespace="/video")
+    logger.info("Video WS: display client left (sid=%s, total=%d)", sid, len(_display_clients))
+    socketio.emit("video_status", _build_video_status(), namespace="/video")
+
+
+def _build_video_status() -> dict:
+    return {
+        "sending": _active_sender_sid is not None,
+        "display_clients": len(_display_clients),
+    }
 
 
 # ===========================================================================
