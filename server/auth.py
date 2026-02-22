@@ -75,11 +75,12 @@ def verify_token(token: str) -> bool:
     return _constant_time_compare(token, config.AUTH_TOKEN)
 
 
-def create_session() -> str:
+def create_session(is_display: bool = False) -> str:
     session_id = secrets.token_urlsafe(32)
     _session_store[session_id] = {
         "created_at": time.time(),
         "ip": request.remote_addr,
+        "is_display": is_display,
     }
     return session_id
 
@@ -88,10 +89,18 @@ def validate_session(session_id: str) -> bool:
     entry = _session_store.get(session_id)
     if entry is None:
         return False
-    if time.time() - entry["created_at"] > config.SESSION_TTL_SECONDS:
+    ttl = config.DISPLAY_SESSION_TTL_SECONDS if entry.get("is_display") else config.SESSION_TTL_SECONDS
+    if time.time() - entry["created_at"] > ttl:
         _session_store.pop(session_id, None)
         return False
     return True
+
+
+def extend_session(session_id: str):
+    """Extend the TTL of a display session (called on heartbeat)."""
+    entry = _session_store.get(session_id)
+    if entry and entry.get("is_display"):
+        entry["created_at"] = time.time()
 
 
 def invalidate_session(session_id: str):

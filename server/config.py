@@ -13,7 +13,9 @@ RATE_LIMIT_MAX_ATTEMPTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 300  # 5 minutes
 
 # Server
-HOST = "0.0.0.0"
+# Production: PET_CAMERA_HOST must be explicitly set (e.g. Tailscale IP 100.x.x.x)
+# Development: defaults to 0.0.0.0
+HOST = os.environ.get("PET_CAMERA_HOST", "0.0.0.0" if IS_DEV else "")
 PORT = 5555
 SECRET_KEY = os.environ.get("PET_CAMERA_SECRET", os.urandom(32).hex())
 

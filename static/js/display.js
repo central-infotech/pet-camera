@@ -11,6 +11,7 @@
   let currentBlobUrl = null;
   let hideStatusTimer = null;
   let wakeLock = null;
+  let heartbeatInterval = null;
 
   // ---- Socket.IO connection with resilience ----
   function connect() {
@@ -29,6 +30,14 @@
       console.log('[Display] Connected');
       statusEl.textContent = '接続完了 — 映像待機中...';
       socket.emit('display_join');
+
+      // Session TTL heartbeat: extend display session every 6 hours
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      heartbeatInterval = setInterval(() => {
+        if (socket && socket.connected) {
+          socket.emit('display_heartbeat');
+        }
+      }, 6 * 60 * 60 * 1000);
     });
 
     socket.on('connect_error', (err) => {

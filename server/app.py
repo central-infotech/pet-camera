@@ -11,6 +11,7 @@ from flask_socketio import SocketIO, disconnect, emit, join_room, leave_room
 
 from . import config
 from .auth import (
+    extend_session,
     handle_auth_request,
     handle_logout,
     is_authenticated,
@@ -314,6 +315,13 @@ def webauthn_credentials():
 @app.route("/display")
 def display():
     if is_authenticated():
+        # Upgrade to display session (30-day TTL) if not already
+        from .auth import create_session as _create_session, _session_store
+        sid = session.get("sid")
+        entry = _session_store.get(sid) if sid else None
+        if entry and not entry.get("is_display"):
+            new_sid = _create_session(is_display=True)
+            session["sid"] = new_sid
         return render_template("display.html")
     return render_template("login.html")
 
@@ -428,10 +436,10 @@ def audio_disconnect():
     if q:
         audio_capture.remove_listener(q)
 
-    # Release talk slot if held
+    # Release talk slot only if this client held it
     if _talking_sid == sid:
         _talking_sid = None
-    audio_player.release_talk()
+        audio_player.release_talk()
 
     # Clean up IP tracking
     _sid_to_ip.pop(sid, None)
@@ -524,6 +532,12 @@ def audio_talk_stop():
 def audio_talk(data):
     """Receive audio data from client and play through speaker."""
     try:
+        sid = request.sid
+
+        # Only accept audio from the client that holds the talk slot
+        if _talking_sid != sid:
+            return
+
         if not audio_player.is_active:
             audio_player.start()
 
@@ -695,6 +709,17 @@ def display_leave():
         logger.exception("display_leave handler error")
 
 
+@socketio.on("display_heartbeat", namespace="/video")
+def display_heartbeat():
+    """Extend display session TTL on periodic heartbeat."""
+    try:
+        sid_cookie = session.get("sid") if session else None
+        if sid_cookie:
+            extend_session(sid_cookie)
+    except Exception:
+        logger.exception("display_heartbeat handler error")
+
+
 def _build_video_status() -> dict:
     return {
         "sending": _active_sender_sid is not None,
@@ -714,6 +739,14 @@ def main():
         print("  PowerShell: $env:PET_CAMERA_TOKEN='your-secret-token'\n")
         return
 
+    # Production: require explicit HOST (Tailscale IP)
+    if not config.IS_DEV and not config.HOST:
+        logger.error("PET_CAMERA_HOST environment variable is not set. In production, bind address must be explicit.")
+        print("\n[ERROR] Set PET_CAMERA_HOST to your Tailscale IP (e.g. 100.x.x.x).\n")
+        print("  Windows:  set PET_CAMERA_HOST=100.x.x.x")
+        print("  PowerShell: $env:PET_CAMERA_HOST='100.x.x.x'\n")
+        return
+
     # Start subsystems
     camera.start()
     audio_capture.start()
@@ -728,8 +761,12 @@ def main():
             ssl_ctx = (crt_files[0], key_files[0])
             logger.info("TLS: using certificate %s", os.path.basename(crt_files[0]))
         else:
-            logger.warning("TLS: No certificates found in %s — running without HTTPS", config.CERT_DIR)
-            logger.warning("TLS: Audio (microphone) features may not work on mobile browsers")
+            logger.error("TLS: No certificates found in %s — HTTPS is required in production", config.CERT_DIR)
+            print("\n[ERROR] HTTPS is required in production mode.")
+            print("  Place certificate (.crt) and key (.key) files in the 'certs/' directory.")
+            print("  Use 'tailscale cert <hostname>' to generate them.")
+            print("  To run without HTTPS, set PET_CAMERA_ENV=development\n")
+            return
 
     proto = "https" if ssl_ctx else "http"
     logger.info("Starting Pet Camera server at %s://%s:%d", proto, config.HOST, config.PORT)

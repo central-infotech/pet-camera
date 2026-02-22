@@ -323,3 +323,95 @@
 3. 再接続後の競合失敗時フロー（再試行・通知）を仕様化
 4. 例外ハンドリング責務のレイヤー分離
 5. 章番号・参照番号の整合修正
+
+---
+
+## 第5弾レビュー（仕様書 + E2E テスト仕様書 + ソースコード照合）
+
+## 評価サマリ
+
+- 仕様書・E2E テスト仕様書ともに粒度は高く、運用シナリオまで踏み込めています。
+- ただし、実装照合の結果、音声排他制御に重大な抜け穴があり、加えてセッション要件・セキュリティ前提・テスト観測点に不整合が残っています。
+
+## Findings（第5弾・重大度順）
+
+### High 1: `audio_talk` がトーク権限を検証せず、排他制御を迂回できる
+
+- 根拠: `server/app.py:484`, `server/app.py:492`, `server/app.py:523`, `server/app.py:531`
+- 問題:
+  - 送話スロットの取得チェックは `audio_talk_start` のみ
+  - 実際の音声データ受信 `audio_talk` 側で `request.sid == _talking_sid` の検証がない
+- 影響:
+  - スロット未取得/排他ブロック中クライアントでも `audio_talk` を直接送るとスピーカー再生されうる
+  - 同時送話・ノイズ混在・排他仕様逸脱を引き起こす
+- 推奨:
+  - `audio_talk` で `request.sid` と `_talking_sid` を厳密照合し、不一致は破棄・ログ記録
+  - 必要なら不正送信のレート制限を追加
+
+### High 2: 非トーカー切断でトークスロットが誤解放される
+
+- 根拠: `server/app.py:432`, `server/app.py:434`, `server/audio.py:180`, `docs/E2E_TEST_SPEC.md:716`
+- 問題:
+  - `audio_disconnect()` が切断 SID に関係なく `release_talk()` を呼ぶ
+  - E2E 仕様書の既知リスク記述は「正確にクリーンアップされる」としており、実装実態と逆
+- 影響:
+  - トーク中でないクライアントの切断を契機にトークスロットが空き扱いになり、同時送話が発生しうる
+- 推奨:
+  - `release_talk()` は `sid == _talking_sid` の場合のみ実行
+  - この不具合を再現する回帰テスト（トーカーA + リスナーB切断 + Cが送話開始）をE2Eへ追加
+
+### High 3: `/display` の 30日TTL + 自動延長仕様が未実装（24時間固定）
+
+- 根拠: `docs/SPECIFICATION.md:380`, `docs/SPECIFICATION.md:399`, `docs/SPECIFICATION.md:412`, `server/auth.py:91`, `server/config.py:11`, `server/config.py:38`
+- 問題:
+  - 仕様は `/display` 長期セッション（30日 + heartbeat延長）を要求
+  - 実装は `SESSION_TTL_SECONDS`（24時間）のみで判定し、`DISPLAY_SESSION_TTL_SECONDS` は未使用
+- 影響:
+  - 無人表示運用の想定に反して 24 時間で失効し、運用停止リスクが残る
+- 推奨:
+  - セッション種別（通常/`/display`）を分離し TTL を実装
+  - 自動延長は HTTP keepalive エンドポイント等で明示実装し、Socket.IO だけに依存しない
+
+### High 4: セキュリティ前提（Tailscale限定・本番HTTPS必須）と起動実装が乖離
+
+- 根拠: `docs/SPECIFICATION.md:839`, `docs/SPECIFICATION.md:1182`, `server/config.py:16`, `server/app.py:731`, `server/app.py:734`
+- 問題:
+  - 仕様は Tailscale IP 限定バインドを要求するが、実装既定値は `0.0.0.0`
+  - 本番で証明書が無い場合も HTTP 起動を許容している
+- 影響:
+  - 意図しないネットワーク露出の可能性
+  - HTTPS 前提機能（マイク等）や運用要件との不整合
+- 推奨:
+  - 本番は「証明書未配置なら起動失敗（fail fast）」に変更
+  - `HOST` を明示設定必須にし、Tailscale IP 以外を拒否するガードを導入
+
+### Medium 1: 「顔を見せる」中の音声挙動が仕様書内で矛盾
+
+- 根拠: `docs/SPECIFICATION.md:497`, `docs/SPECIFICATION.md:1344`, `docs/SPECIFICATION.md:1397`, `static/js/app.js:36`, `static/js/app.js:335`, `static/js/audio.js:229`
+- 問題:
+  - 同一スマホで3機能同時利用可（自動制御なし）と、Talkボタン無効化/Listen自動OFFが混在
+  - 実装は「無効化しない・自動OFFしない」側
+- 影響:
+  - 実装/テストの正解条件がぶれ、今後の改修で回帰を生みやすい
+- 推奨:
+  - どちらかの方針に統一し、競合記述を削除
+  - E2E 期待結果とUI仕様を同じ方針で再同期
+
+### Medium 2: E2E テストの観測項目が実装 API 形式と不一致
+
+- 根拠: `docs/E2E_TEST_SPEC.md:341`, `server/app.py:219`, `server/app.py:222`
+- 問題:
+  - E2E は `/api/status` に `listening_clients` 直下フィールドがある前提
+  - 実装は `audio.listening_clients` 配下
+- 影響:
+  - 手順どおりに実施しても誤判定（偽失敗）になりうる
+- 推奨:
+  - E2E 仕様の参照パスを `audio.listening_clients` に修正
+
+## 第5弾 優先修正順（仕様 + テスト + 実装）
+
+1. 音声送話の認可チェック修正（`audio_talk` SID検証 + 切断時の誤解放修正）
+2. `/display` 長期セッション（30日 + 延長）を仕様どおり実装
+3. 本番起動時のセキュリティガード（HTTPS必須・バインド制限）を強制
+4. 「顔を見せる」中の音声仕様を一本化し、仕様書とE2Eを再同期
+5. E2E の API 観測パスと回帰ケース（排他破綻再現）を更新

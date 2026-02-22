@@ -394,9 +394,9 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 
 | 項目 | 仕様 |
 |------|------|
-| 適用条件 | `/display` ページへの初回アクセス時にセッションを発行 |
-| TTL | 30日間 |
-| 自動延長 | Socket.IO `/video` namespace の接続が維持されている間、TTL を自動延長（heartbeat ごとに更新） |
+| 適用条件 | `/display` ページへのアクセス時に通常セッション（24h）をディスプレイセッション（30日）に昇格。セッションストアの `is_display` フラグで判別 |
+| TTL | 30日間（`DISPLAY_SESSION_TTL_SECONDS`） |
+| 自動延長 | display クライアントが 6 時間ごとに `display_heartbeat` イベントを Socket.IO `/video` namespace 経由で送信。サーバーはセッションの `created_at` を更新し TTL をリセット |
 | 失効時の動作 | `/display` ページが自動的にログイン画面にリダイレクト。再認証後に `/display` へ復帰 |
 
 > **注意**: 長期セッションはセキュリティリスクがやや高まるが、Tailscale VPN 内でのみアクセス可能な前提であり、利便性を優先する。
@@ -430,7 +430,7 @@ Socket.IO ハンドシェイク時に認証を必須とする。以下のいず�
 | イベント名 | 方向 | ペイロード | 説明 |
 |-----------|------|-----------|------|
 | `audio_stream` | サーバー → クライアント | `binary (PCM 16bit, 16kHz, mono)` | 家の音声データ（マイク入力） |
-| `audio_talk` | クライアント → サーバー | `binary (PCM 16bit, 16kHz, mono)` | ユーザーの声のデータ（スピーカー出力） |
+| `audio_talk` | クライアント → サーバー | `binary (PCM 16bit, 16kHz, mono)` | ユーザーの声のデータ（スピーカー出力）。サーバーは `request.sid == _talking_sid` を検証し、トークスロット未取得のクライアントからのデータは破棄する |
 | `audio_listen_start` | クライアント → サーバー | なし | 音声リスニング開始を要求 |
 | `audio_listen_stop` | クライアント → サーバー | なし | 音声リスニング停止を要求 |
 | `audio_talk_start` | クライアント → サーバー | なし | トークスロットの取得を要求 |
@@ -506,6 +506,7 @@ Socket.IO ハンドシェイク時に認証を必須とする。以下のいず�
 | `video_send_stop` | クライアント → サーバー | なし | スマホがカメラ送信を停止。送信権を解放 |
 | `display_join` | クライアント → サーバー | なし | PC 表示クライアントが `/display` ルームに参加（`display` 役割のみ） |
 | `display_leave` | クライアント → サーバー | なし | PC 表示クライアントが `/display` ルームから退出 |
+| `display_heartbeat` | クライアント → サーバー | なし | ディスプレイセッションの TTL を延長（6 時間ごとに送信） |
 | `video_status` | サーバー → クライアント | `{"sending": bool, "display_clients": int, "resolution": str, "fps": int}` | 映像送信の状態通知 |
 | `video_error` | サーバー → クライアント | `{"code": str, "message": str}` | エラー通知（`SENDER_BUSY` 等） |
 
@@ -836,7 +837,7 @@ pet-camera/
 |------|------|
 | トークン認証 | 環境変数 `PET_CAMERA_TOKEN` に設定した文字列で認証。初回アクセス時にブラウザで入力し、セッション Cookie を発行 |
 | パスキー認証 | WebAuthn による生体認証。初回トークン認証後にデバイスを登録し、次回以降パスキーでログイン |
-| バインドアドレス制限 | Flask サーバーを Tailscale の仮想IPアドレス（`100.x.x.x`）にのみバインド |
+| バインドアドレス制限 | 本番では環境変数 `PET_CAMERA_HOST` で Tailscale IP（`100.x.x.x`）を明示設定必須。未設定の場合は起動を拒否（fail fast）。開発モード（`PET_CAMERA_ENV=development`）のみ `0.0.0.0` にフォールバック |
 | アクセスログ | 全リクエストをログファイルに記録（日時・クライアントIP・メソッド・パス・ステータスコード） |
 | CORS 制限 | 同一オリジンのみ許可 |
 | 入力バリデーション | 設定変更 API のパラメータを許容値テーブル（6.5節）に基づき検証 |
@@ -1194,7 +1195,7 @@ ssl_context = (
     "certs/<マシン名>.<tailnet名>.ts.net.crt",
     "certs/<マシン名>.<tailnet名>.ts.net.key"
 )
-socketio.run(app, host="0.0.0.0", port=5555, ssl_context=ssl_context)
+socketio.run(app, host=config.HOST, port=5555, ssl_context=ssl_context)
 ```
 
 > Flask-SocketIO は `ssl_context` を指定すると HTTPS + WSS を同一ポートで同時に提供する。映像（MJPEG）・音声（WSS）・API（HTTPS）のすべてが `:5555` に統一される。
@@ -1223,8 +1224,8 @@ socketio.run(app, host="0.0.0.0", port=5555, ssl_context=ssl_context)
 | 項目 | 開発環境 | 本番環境 |
 |------|---------|---------|
 | プロトコル | HTTP + WS | HTTPS + WSS |
-| ホスト | `localhost` / `127.0.0.1` | Tailscale IP / MagicDNS |
-| TLS 証明書 | 不要 | 必須（`tailscale cert`） |
+| ホスト | `0.0.0.0`（デフォルト） | `PET_CAMERA_HOST` 環境変数で Tailscale IP を明示設定（**必須**。未設定時は起動拒否） |
+| TLS 証明書 | 不要 | 必須（`tailscale cert`）。`certs/` に未配置の場合は**起動を拒否**（fail fast） |
 | マイク機能 | localhost なら動作可 | HTTPS 必須 |
 | 設定方法 | 環境変数 `PET_CAMERA_ENV=development` | 環境変数 `PET_CAMERA_ENV=production`（デフォルト） |
 
@@ -1341,7 +1342,7 @@ Step 3: スマホ側 — カメラ送信機能追加 (static/js/app.js)
 Step 4: 音声の常時 ON 対応 (static/js/audio.js)
   - 「顔を見せる」開始時に Talk を自動開始（常時 ON）
   - 「顔を見せる」停止時に Talk を自動停止
-  - プッシュ・トゥ・トークとの共存（顔を見せる中は Talk ボタン無効化）
+  - プッシュ・トゥ・トークとの共存（顔を見せる中の連続 Talk を中断しないよう `isContinuousTalking` ガード）
 
 Step 5: スタイル調整 (static/css/style.css)
   - display.html 用のフルスクリーンスタイル
@@ -1394,6 +1395,6 @@ webauthn>=2.0.0
 - Tailscale の無料プランはデバイス100台まで（本用途では十分）
 - MJPEG は H.264 等と比べて帯域効率は劣るが、実装のシンプルさを優先
 - Phase 1 の音声はプッシュ・トゥ・トーク方式とし、常時双方向通話はサポートしない
-- Phase 2 の「顔を見せる」機能使用中は Talk が常時 ON となるため、ハウリング防止のためリスニング（PC マイク → スマホ）は自動的に無効化される
+- Phase 2 の「顔を見せる」機能使用中は Talk が常時 ON となる。同一スマホ上ではリスニング（聞く）も同時に利用可能（ハウリング防止の自動制御は行わない）
 - Phase 2 の逆方向映像は WebRTC ではなく Socket.IO による JPEG リレー方式を採用。Tailscale VPN 内の通信のため NAT traversal が不要であり、既存アーキテクチャとの一貫性を優先する
 - 音声品質は電話相当（16kHz/mono）。高音質ステレオ音声はスコープ外
