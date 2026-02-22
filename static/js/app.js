@@ -26,6 +26,18 @@
   const brightnessVal = document.getElementById('brightness-val');
   const contrastVal = document.getElementById('contrast-val');
 
+  // ---- Exclusive session banner ----
+  const exclusiveBanner = document.getElementById('exclusive-banner');
+
+  // Connect audio socket eagerly to receive exclusive status
+  PetAudio.connect();
+  PetAudio.onBlockedChange = (blocked) => {
+    if (exclusiveBanner) exclusiveBanner.hidden = !blocked;
+    btnListen.disabled = blocked;
+    btnTalk.disabled = blocked;
+    if (btnShowFace) btnShowFace.disabled = blocked;
+  };
+
   // ---- Video overlay (hide once first frame arrives) ----
   const videoStream = document.getElementById('video-stream');
   const videoOverlay = document.getElementById('video-overlay');
@@ -321,14 +333,6 @@
 
         // Start audio talk (continuous mode)
         PetAudio.startContinuousTalk(ownerVideoStream);
-
-        // Disable listen and talk buttons during owner video
-        btnListen.disabled = true;
-        btnTalk.disabled = true;
-        if (PetAudio.isListening) {
-          PetAudio.stopListening();
-          btnListen.classList.remove('active');
-        }
       }
 
       ownerVideoStatus.textContent = '送信中: 640x480 / 10fps';
@@ -345,8 +349,8 @@
 
     videoSocket.on('video_error', (err) => {
       console.error('[OwnerVideo] Error:', err);
-      if (err.code === 'SENDER_BUSY') {
-        alert('別のデバイスが既に映像を送信中です');
+      if (err.code === 'SENDER_BUSY' || err.code === 'EXCLUSIVE_BLOCKED') {
+        alert('別のデバイスが操作中です');
         stopOwnerVideo();
       }
     });
@@ -402,10 +406,6 @@
 
     // Stop continuous talk
     PetAudio.stopContinuousTalk();
-
-    // Re-enable listen and talk buttons
-    btnListen.disabled = false;
-    btnTalk.disabled = false;
 
     // Hide PiP self-preview
     ownerPip.hidden = true;

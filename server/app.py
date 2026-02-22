@@ -68,8 +68,12 @@ _audio_listeners: dict = {}
 _active_sender_sid: str | None = None  # SID of the client currently sending video
 _display_clients: set[str] = set()  # SIDs of display clients
 _video_client_roles: dict[str, str] = {}  # {sid: 'sender' | 'display'}
-_sender_listen_blocked: bool = False  # Whether listen is blocked for sender
 _last_frame_time: float = 0.0  # Rate limiting for incoming frames
+
+# Exclusive session control: only one phone can use audio/video features at a time
+_exclusive_ip: str | None = None  # IP that currently holds exclusive access
+_sid_to_ip: dict[str, str] = {}  # socket sid → client IP (across both namespaces)
+_talking_sid: str | None = None  # audio sid currently talking
 
 # ---------------------------------------------------------------------------
 # Ensure directories
@@ -340,6 +344,58 @@ def _enforce_snapshot_limit(new_size: int):
 
 
 # ===========================================================================
+# Exclusive session control helpers
+# ===========================================================================
+
+def _check_and_claim_exclusive(client_ip: str) -> bool:
+    """Check if this IP can use features, and claim exclusive if not yet held."""
+    global _exclusive_ip
+    if client_ip is None:
+        return False
+    if _exclusive_ip is None:
+        _exclusive_ip = client_ip
+        logger.info("Exclusive: claimed by %s", client_ip)
+        _broadcast_exclusive_status()
+        return True
+    return _exclusive_ip == client_ip
+
+
+def _is_feature_active_for_ip(ip: str) -> bool:
+    """Check if any feature (listen/talk/video) is active for the given IP."""
+    for sid in _audio_listeners:
+        if _sid_to_ip.get(sid) == ip:
+            return True
+    if _talking_sid is not None and _sid_to_ip.get(_talking_sid) == ip:
+        return True
+    if _active_sender_sid is not None and _sid_to_ip.get(_active_sender_sid) == ip:
+        return True
+    return False
+
+
+def _maybe_release_exclusive():
+    """Release exclusive access if the holding IP has no active features."""
+    global _exclusive_ip
+    if _exclusive_ip is None:
+        return
+    if not _is_feature_active_for_ip(_exclusive_ip):
+        logger.info("Exclusive: released by %s", _exclusive_ip)
+        _exclusive_ip = None
+        _broadcast_exclusive_status()
+
+
+def _broadcast_exclusive_status():
+    """Notify all audio-connected clients about their blocked/unblocked status."""
+    for sid in list(_connected_clients):
+        client_ip = _sid_to_ip.get(sid)
+        is_blocked = _exclusive_ip is not None and client_ip != _exclusive_ip
+        try:
+            socketio.emit("exclusive_status", {"blocked": is_blocked},
+                          namespace="/audio", to=sid)
+        except Exception:
+            pass
+
+
+# ===========================================================================
 # Socket.IO — Audio namespace
 # ===========================================================================
 
@@ -351,11 +407,19 @@ def audio_connect(auth_data=None):
         return False
     sid = request.sid
     _connected_clients.add(sid)
-    logger.info("Audio WS: client connected (sid=%s, total=%d)", sid, len(_connected_clients))
+    _sid_to_ip[sid] = request.remote_addr
+    logger.info("Audio WS: client connected (sid=%s, ip=%s, total=%d)",
+                sid, request.remote_addr, len(_connected_clients))
+
+    # Send initial exclusive status
+    client_ip = request.remote_addr
+    is_blocked = _exclusive_ip is not None and client_ip != _exclusive_ip
+    emit("exclusive_status", {"blocked": is_blocked})
 
 
 @socketio.on("disconnect", namespace="/audio")
 def audio_disconnect():
+    global _talking_sid
     sid = request.sid
     _connected_clients.discard(sid)
 
@@ -365,22 +429,26 @@ def audio_disconnect():
         audio_capture.remove_listener(q)
 
     # Release talk slot if held
+    if _talking_sid == sid:
+        _talking_sid = None
     audio_player.release_talk()
+
+    # Clean up IP tracking
+    _sid_to_ip.pop(sid, None)
     logger.info("Audio WS: client disconnected (sid=%s)", sid)
+
+    _maybe_release_exclusive()
 
 
 @socketio.on("audio_listen_start", namespace="/audio")
 def audio_listen_start():
     try:
         sid = request.sid
+        client_ip = _sid_to_ip.get(sid)
 
-        # Phase 2: Block listen if this client is the active video sender
-        if _sender_listen_blocked and _active_sender_sid is not None:
-            emit("audio_status", {
-                "listening": False,
-                "listen_blocked": True,
-                "reason": "LISTEN_BLOCKED_DURING_OWNER_VIDEO",
-            })
+        # Exclusive session check
+        if not _check_and_claim_exclusive(client_ip):
+            emit("audio_status", {"listening": False, "error": "exclusive_blocked"})
             return
 
         if sid in _audio_listeners:
@@ -408,15 +476,25 @@ def audio_listen_stop():
         if q:
             audio_capture.remove_listener(q)
         emit("audio_status", {"listening": False, "talking_clients": audio_player.talking_clients})
+        _maybe_release_exclusive()
     except Exception:
         logger.exception("audio_listen_stop handler error")
 
 
 @socketio.on("audio_talk_start", namespace="/audio")
 def audio_talk_start():
+    global _talking_sid
     try:
         sid = request.sid
+        client_ip = _sid_to_ip.get(sid)
+
+        # Exclusive session check
+        if not _check_and_claim_exclusive(client_ip):
+            emit("audio_status", {"talking": False, "error": "exclusive_blocked"})
+            return
+
         if audio_player.acquire_talk():
+            _talking_sid = sid
             logger.info("Audio WS: talk started (sid=%s)", sid)
             if not audio_player.is_active:
                 audio_player.start()
@@ -429,11 +507,15 @@ def audio_talk_start():
 
 @socketio.on("audio_talk_stop", namespace="/audio")
 def audio_talk_stop():
+    global _talking_sid
     try:
         sid = request.sid
+        if _talking_sid == sid:
+            _talking_sid = None
         audio_player.release_talk()
         logger.info("Audio WS: talk stopped (sid=%s)", sid)
         emit("audio_status", {"listening": sid in _audio_listeners, "talking": False})
+        _maybe_release_exclusive()
     except Exception:
         logger.exception("audio_talk_stop handler error")
 
@@ -470,7 +552,6 @@ def _stream_audio_to_client(sid: str, q):
 
 @socketio.on("connect", namespace="/video")
 def video_connect(auth_data=None):
-    global _active_sender_sid
     if not validate_socketio_auth(auth_data):
         logger.warning("Video WS: rejected unauthenticated connection from %s", request.remote_addr)
         disconnect()
@@ -485,19 +566,19 @@ def video_connect(auth_data=None):
 
     sid = request.sid
     _video_client_roles[sid] = role
+    _sid_to_ip[sid] = request.remote_addr
     logger.info("Video WS: %s connected (sid=%s, role=%s)", request.remote_addr, sid, role)
 
 
 @socketio.on("disconnect", namespace="/video")
 def video_disconnect():
-    global _active_sender_sid, _sender_listen_blocked
+    global _active_sender_sid
     try:
         sid = request.sid
         role = _video_client_roles.pop(sid, None)
 
         if role == "sender" and _active_sender_sid == sid:
             _active_sender_sid = None
-            _sender_listen_blocked = False
             logger.info("Video WS: sender disconnected, releasing send slot (sid=%s)", sid)
             socketio.emit("video_status", _build_video_status(), namespace="/video")
 
@@ -505,17 +586,27 @@ def video_disconnect():
             _display_clients.discard(sid)
             logger.info("Video WS: display client left (sid=%s, remaining=%d)", sid, len(_display_clients))
             socketio.emit("video_status", _build_video_status(), namespace="/video")
+
+        _sid_to_ip.pop(sid, None)
+        _maybe_release_exclusive()
     except Exception:
         logger.exception("video_disconnect handler error")
 
 
 @socketio.on("video_send_start", namespace="/video")
 def video_send_start(data=None):
-    global _active_sender_sid, _sender_listen_blocked
+    global _active_sender_sid
     try:
         sid = request.sid
+        client_ip = _sid_to_ip.get(sid)
 
         if _video_client_roles.get(sid) != "sender":
+            return
+
+        # Exclusive session check
+        if not _check_and_claim_exclusive(client_ip):
+            emit("video_error", {"code": "EXCLUSIVE_BLOCKED",
+                                 "message": "Another device is currently using the system"})
             return
 
         if _active_sender_sid is not None and _active_sender_sid != sid:
@@ -523,7 +614,6 @@ def video_send_start(data=None):
             return
 
         _active_sender_sid = sid
-        _sender_listen_blocked = True
         info = data if isinstance(data, dict) else {}
         logger.info("Video WS: send started (sid=%s, %s)", sid,
                     f"{info.get('width', '?')}x{info.get('height', '?')}@{info.get('fps', '?')}fps")
@@ -534,15 +624,15 @@ def video_send_start(data=None):
 
 @socketio.on("video_send_stop", namespace="/video")
 def video_send_stop():
-    global _active_sender_sid, _sender_listen_blocked
+    global _active_sender_sid
     try:
         sid = request.sid
 
         if _active_sender_sid == sid:
             _active_sender_sid = None
-            _sender_listen_blocked = False
             logger.info("Video WS: send stopped (sid=%s)", sid)
             socketio.emit("video_status", _build_video_status(), namespace="/video")
+            _maybe_release_exclusive()
     except Exception:
         logger.exception("video_send_stop handler error")
 

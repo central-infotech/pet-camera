@@ -304,6 +304,22 @@ footer {
   transform: scaleX(-1);
 }
 
+/* ---- Exclusive session banner ---- */
+.exclusive-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  background: rgba(239, 68, 68, 0.15);
+  border-top: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.exclusive-banner[hidden] { display: none; }
+
 /* ---- Owner Video Controls (Phase 2) ---- */
 .owner-video-controls .status-text {
   font-size: 0.75rem;

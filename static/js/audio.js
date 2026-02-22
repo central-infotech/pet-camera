@@ -25,6 +25,10 @@ const PetAudio = (() => {
   // Continuous talk mode (Phase 2)
   let isContinuousTalking = false;
 
+  // Exclusive session control
+  let isBlocked = false;
+  let _onBlockedChange = null;
+
   // State tracking for reconnect recovery
   let _wasListening = false;
 
@@ -68,6 +72,12 @@ const PetAudio = (() => {
 
     socket.on('audio_status', (status) => {
       console.log('[Audio] Status:', status);
+    });
+
+    socket.on('exclusive_status', (status) => {
+      console.log('[Audio] Exclusive status:', status);
+      isBlocked = status.blocked;
+      if (_onBlockedChange) _onBlockedChange(isBlocked);
     });
 
     socket.on('disconnect', (reason) => {
@@ -216,6 +226,7 @@ const PetAudio = (() => {
 
   function stopTalking() {
     if (!isTalking) return;
+    if (isContinuousTalking) return;  // Don't stop continuous talk from "顔を見せる"
     isTalking = false;
 
     if (socket) socket.emit('audio_talk_stop');
@@ -257,9 +268,29 @@ const PetAudio = (() => {
 
     const audioStream = new MediaStream(audioTracks);
 
+    // If manual talk is active, clean up its processor (we take over the slot)
+    const wasManuallyTalking = isTalking && !isContinuousTalking;
+    if (wasManuallyTalking) {
+      if (_talkProcessor) {
+        _talkProcessor.disconnect();
+        _talkProcessor.onaudioprocess = null;
+        _talkProcessor = null;
+      }
+      if (_talkSource) {
+        _talkSource.disconnect();
+        _talkSource = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+      }
+    }
+
     isContinuousTalking = true;
     isTalking = true;
-    socket.emit('audio_talk_start');
+    if (!wasManuallyTalking) {
+      socket.emit('audio_talk_start');
+    }
 
     const source = audioCtx.createMediaStreamSource(audioStream);
     const processor = audioCtx.createScriptProcessor(4096, 1, 1);
@@ -338,5 +369,8 @@ const PetAudio = (() => {
     setVolume,
     get isListening() { return isListening; },
     get isTalking() { return isTalking; },
+    get isContinuousTalking() { return isContinuousTalking; },
+    get isBlocked() { return isBlocked; },
+    set onBlockedChange(fn) { _onBlockedChange = fn; },
   };
 })();

@@ -476,17 +476,25 @@ Socket.IO ハンドシェイク時に認証を必須とする。以下のいず�
 | 送信権解放（正常） | `video_send_stop` 受信 | `active_sender_sid` をクリア。`video_status` で `sending: false` を通知 |
 | 送信権解放（異常） | `disconnect` イベント（回線断・アプリ強制終了） | 切断した SID が `active_sender_sid` と一致する場合、自動解放。`video_status` で `sending: false` を通知 |
 
-#### ハウリング防止: Listen 強制制御
+#### 排他セッション制御（デバイス単位）
 
-「顔を見せる」（映像送信）中のハウリングを防止するため、サーバー側で Listen を強制制御する。
+1台のスマホが「聞く」「話す」「顔を見せる」のいずれかを使用中は、同一スマホでは3機能すべてを同時に利用できるが、他のスマホからはいずれの機能も利用できない。サーバーはクライアントの IP アドレス（Tailscale VPN の 100.x.x.x）でデバイスを識別する。
 
-| トリガー | サーバー動作 |
-|---------|------------|
-| `video_send_start` 成功 | 送信元クライアントの Listen を強制停止。`audio_status` で `{"listening": false, "talking": true, "listen_blocked": true}` を送信 |
-| 映像送信中に `audio_listen_start` 受信 | 送信元クライアントからの場合は拒否。`audio_status` で `{"listen_blocked": true, "reason": "LISTEN_BLOCKED_DURING_OWNER_VIDEO"}` を送信 |
-| `video_send_stop` または送信者 `disconnect` | Listen ブロックを解除。`audio_status` で `{"listen_blocked": false}` を送信 |
+| 状態 | 動作 |
+|------|------|
+| 排他なし（`exclusive_ip` 未設定） | 最初に機能を使用したデバイスの IP を `exclusive_ip` に設定し、全クライアントに `exclusive_status` を通知 |
+| 排他保持中（同一 IP） | 「聞く」「話す」「顔を見せる」を自由に同時利用可能 |
+| 排他保持中（他 IP） | `audio_listen_start` / `audio_talk_start` は `{"error": "exclusive_blocked"}` で拒否。`video_send_start` は `{"code": "EXCLUSIVE_BLOCKED"}` で拒否。UI 上でバナー「他のデバイスが操作中のため、操作できません」を表示し、3ボタンすべてを disabled にする |
+| 排他解放 | 保持デバイスの全機能が停止（リスナー0・トーク停止・映像停止）した時点で `exclusive_ip` をクリアし、全クライアントに `exclusive_status` を通知 |
+| 排他保持デバイスの切断 | `disconnect` ハンドラで機能をクリーンアップし、アクティブな機能が残らなければ排他を自動解放 |
 
-> **注意**: Listen ブロックは映像送信元のクライアントにのみ適用される。他のクライアントの Listen は影響を受けない。
+**イベント: `exclusive_status`**（サーバー → クライアント、`/audio` namespace）
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `blocked` | `bool` | `true`: 他デバイスが排他保持中（このクライアントは操作不可）。`false`: 操作可能 |
+
+> **注意**: 同一スマホ上では「顔を見せる」中でも「聞く」「話す」が利用できる。ハウリング防止の自動制御は行わない。
 
 #### イベント一覧
 
@@ -1239,8 +1247,8 @@ socketio.run(app, host="0.0.0.0", port=5555, ssl_context=ssl_context)
 | 遅延 | Socket.IO バイナリ転送。サーバーはリレーのみ（デコード/再エンコードなし）で遅延を最小化 |
 | フレームレート制御 | スマホ側で `setInterval` による定期キャプチャ。`requestAnimationFrame` ではなく固定間隔で帯域を安定化 |
 | カメラ選択 | `facingMode: 'user'` でフロントカメラを指定。飼い主の顔を映す用途のため |
-| ハウリング防止 | 「顔を見せる」中は Talk 常時 ON + Listen 自動 OFF。PC マイク → スマホの音声ループを遮断 |
-| 複数スマホからの同時送信 | 先勝ち方式。1台のみ映像送信可。2台目以降は `video_status` で拒否を通知 |
+| 排他セッション制御 | デバイス単位（IP ベース）で排他制御。1台が機能使用中は他のスマホからの操作をブロック。同一スマホでは「聞く」「話す」「顔を見せる」を同時利用可能 |
+| 複数スマホからの同時操作 | 先勝ち方式。1台のみ全機能を利用可。2台目以降は `exclusive_status` でブロックを通知し、UI にバナー表示 |
 | PC 表示クライアント | 複数台の PC で `/display` を開くことが可能。全 display クライアントに同じフレームをブロードキャスト |
 | ブラウザの自動スリープ | 映像受信中は `<video>` の再生状態を維持し、画面スリープを抑制（Screen Wake Lock API の利用を検討） |
 
