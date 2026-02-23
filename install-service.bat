@@ -39,6 +39,21 @@ if "%PET_CAMERA_TOKEN%"=="" (
     exit /b 1
 )
 
+REM Get Tailscale IP for PET_CAMERA_HOST
+if "%PET_CAMERA_HOST%"=="" (
+    for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PET_CAMERA_HOST 2^>nul ^| findstr PET_CAMERA_HOST') do set PET_CAMERA_HOST=%%b
+)
+if "%PET_CAMERA_HOST%"=="" (
+    for /f "delims=" %%i in ('tailscale ip -4 2^>nul') do set PET_CAMERA_HOST=%%i
+)
+if "%PET_CAMERA_HOST%"=="" (
+    echo [ERROR] PET_CAMERA_HOST is not set and Tailscale IP could not be detected.
+    echo Set it first: setx /M PET_CAMERA_HOST "100.x.x.x"
+    pause
+    exit /b 1
+)
+echo Using PET_CAMERA_HOST=%PET_CAMERA_HOST%
+
 set SERVICE_NAME=PetCameraServer
 set APP_DIR=%~dp0
 REM Remove trailing backslash to prevent quote-escaping issues
@@ -78,7 +93,7 @@ echo Run: "%NSSM%" set %SERVICE_NAME% ObjectName .\%USERNAME% YOUR_PASSWORD
 echo Or use services.msc to set the logon account.
 
 REM Environment variables
-"%NSSM%" set %SERVICE_NAME% AppEnvironmentExtra PET_CAMERA_TOKEN=%PET_CAMERA_TOKEN% PET_CAMERA_ENV=production
+"%NSSM%" set %SERVICE_NAME% AppEnvironmentExtra PET_CAMERA_TOKEN=%PET_CAMERA_TOKEN% PET_CAMERA_ENV=production PET_CAMERA_HOST=%PET_CAMERA_HOST%
 
 echo.
 echo Service installed successfully!

@@ -17,6 +17,9 @@ data/
 .vscode/
 .idea/
 
+# Tests
+tests/
+
 # OS
 Thumbs.db
 Desktop.ini

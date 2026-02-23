@@ -284,7 +284,6 @@
     try {
       ownerVideoStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 640, height: 480 },
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch (err) {
       console.error('[OwnerVideo] Camera access denied:', err);
@@ -327,12 +326,8 @@
       videoSocket.emit('video_send_start', { width: 640, height: 480, fps: 10 });
 
       if (!isSendingVideo) {
-        // First connect
         isSendingVideo = true;
         btnShowFace.classList.add('active');
-
-        // Start audio talk (continuous mode)
-        PetAudio.startContinuousTalk(ownerVideoStream);
       }
 
       ownerVideoStatus.textContent = '送信中: 640x480 / 10fps';
@@ -403,9 +398,6 @@
       videoSocket.disconnect();
       videoSocket = null;
     }
-
-    // Stop continuous talk
-    PetAudio.stopContinuousTalk();
 
     // Hide PiP self-preview
     ownerPip.hidden = true;
