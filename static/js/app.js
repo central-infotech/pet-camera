@@ -53,16 +53,16 @@
   }
 
   function showWebRTC() {
-    videoWebRTC.style.display = '';
-    videoMJPEG.style.display = 'none';
+    videoWebRTC.hidden = false;
+    videoMJPEG.hidden = true;
     // Stop MJPEG stream to save bandwidth
     videoMJPEG.src = '';
     videoOverlay.hidden = true;
   }
 
   function showMJPEG() {
-    videoWebRTC.style.display = 'none';
-    videoMJPEG.style.display = '';
+    videoWebRTC.hidden = true;
+    videoMJPEG.hidden = false;
     videoMJPEG.src = '/video_feed?' + Date.now();
     checkVideoLoaded();
   }
