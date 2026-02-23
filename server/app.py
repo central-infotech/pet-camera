@@ -22,6 +22,7 @@ from .auth import (
 from .camera import Camera
 from .audio import AudioCapture, AudioPlayer
 from . import webauthn_auth
+from . import webrtc
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -243,7 +244,55 @@ def patch_settings():
         code = "UNKNOWN_PARAMETER" if "Unknown" in error else "INVALID_PARAMETER"
         return jsonify({"error": {"code": code, "message": error}}), 400
 
+    # Reset WebRTC source track so next connection uses new camera settings
+    webrtc.reset_source_track()
+
     return jsonify(result)
+
+
+# --- WebRTC ---
+
+@app.route("/api/webrtc/offer", methods=["POST"])
+@login_required
+def webrtc_offer():
+    """Accept a WebRTC SDP offer and return an answer."""
+    data = request.get_json(silent=True)
+    if not data or "sdp" not in data:
+        return jsonify({"error": {"code": "INVALID_PARAMETER",
+                                  "message": "SDP offer required"}}), 400
+
+    import uuid
+    pc_id = str(uuid.uuid4())[:8]
+    session_id = session.get("sid", "")
+
+    try:
+        answer_sdp = webrtc.handle_offer(
+            camera, data["sdp"], pc_id, session_id, config.WEBRTC_MAX_PEERS
+        )
+    except ValueError as e:
+        if "TOO_MANY_PEERS" in str(e):
+            return jsonify({"error": {"code": "TOO_MANY_PEERS",
+                                      "message": "Maximum connections reached"}}), 429
+        return jsonify({"error": {"code": "WEBRTC_ERROR",
+                                  "message": str(e)}}), 500
+    except Exception as e:
+        logger.exception("WebRTC: offer handling failed")
+        return jsonify({"error": {"code": "WEBRTC_ERROR",
+                                  "message": str(e)}}), 500
+
+    return jsonify({"sdp": answer_sdp, "type": "answer", "pc_id": pc_id})
+
+
+@app.route("/api/webrtc/<pc_id>", methods=["DELETE"])
+@login_required
+def webrtc_close(pc_id):
+    """Close a WebRTC connection (owner only)."""
+    session_id = session.get("sid", "")
+    ok = webrtc.close_peer(pc_id, session_id)
+    if not ok:
+        return jsonify({"error": {"code": "FORBIDDEN",
+                                  "message": "Not the owner of this connection"}}), 403
+    return jsonify({"closed": True})
 
 
 # --- Auth ---
@@ -747,7 +796,8 @@ def main():
         print("  PowerShell: $env:PET_CAMERA_HOST='100.x.x.x'\n")
         return
 
-    # Start subsystems
+    # Start subsystems (webrtc first so asyncio loop is ready before requests)
+    webrtc.start()
     camera.start()
     audio_capture.start()
     audio_player.start()
@@ -783,6 +833,7 @@ def main():
         camera.stop()
         audio_capture.stop()
         audio_player.stop()
+        webrtc.stop()
 
 
 if __name__ == "__main__":

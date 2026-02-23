@@ -40,7 +40,9 @@
   <!-- Video -->
   <main>
     <div class="video-container">
-      <img id="video-stream" src="/video_feed" alt="Live Feed">
+      <video id="video-stream-webrtc" autoplay playsinline muted
+             style="width:100%; height:100%; object-fit:contain; display:none;"></video>
+      <img id="video-stream-mjpeg" src="/video_feed" alt="Live Feed">
       <div id="video-overlay" class="overlay" hidden>
         <p>カメラに接続中...</p>
       </div>
@@ -145,6 +147,7 @@
     <span id="status-audio">音声: --</span>
   </footer>
 
+  <script src="/static/js/webrtc.js"></script>
   <script src="/static/js/audio.js"></script>
   <script src="/static/js/app.js"></script>
   <script>

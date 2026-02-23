@@ -46,5 +46,9 @@ SNAPSHOT_MAX_BYTES = 500 * 1024 * 1024  # 500 MB
 # Logs
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 
+# WebRTC
+WEBRTC_DEFAULT_FPS = 10  # WebRTC 配信時のデフォルト FPS
+WEBRTC_MAX_PEERS = 3     # 同時接続数の上限
+
 # TLS
 CERT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "certs")

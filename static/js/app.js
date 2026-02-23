@@ -38,20 +38,54 @@
     if (btnShowFace) btnShowFace.disabled = blocked;
   };
 
-  // ---- Video overlay (hide once first frame arrives) ----
-  const videoStream = document.getElementById('video-stream');
+  // ---- Video: WebRTC with MJPEG fallback ----
+  const videoWebRTC = document.getElementById('video-stream-webrtc');
+  const videoMJPEG = document.getElementById('video-stream-mjpeg');
   const videoOverlay = document.getElementById('video-overlay');
 
   function checkVideoLoaded() {
-    if (videoStream.naturalWidth > 0) {
+    if (videoMJPEG.naturalWidth > 0) {
       videoOverlay.hidden = true;
     } else {
       videoOverlay.hidden = false;
       requestAnimationFrame(checkVideoLoaded);
     }
   }
+
+  function showWebRTC() {
+    videoWebRTC.style.display = '';
+    videoMJPEG.style.display = 'none';
+    // Stop MJPEG stream to save bandwidth
+    videoMJPEG.src = '';
+    videoOverlay.hidden = true;
+  }
+
+  function showMJPEG() {
+    videoWebRTC.style.display = 'none';
+    videoMJPEG.style.display = '';
+    videoMJPEG.src = '/video_feed?' + Date.now();
+    checkVideoLoaded();
+  }
+
+  PetWebRTC.onConnected = () => {
+    console.log('[App] WebRTC connected');
+    showWebRTC();
+  };
+
+  PetWebRTC.onDisconnected = () => {
+    console.log('[App] WebRTC disconnected, waiting for reconnect...');
+  };
+
+  PetWebRTC.onFallback = () => {
+    console.log('[App] Falling back to MJPEG');
+    showMJPEG();
+  };
+
+  // Initial connection
   videoOverlay.hidden = false;
-  checkVideoLoaded();
+  PetWebRTC.connect(videoWebRTC).then((ok) => {
+    if (!ok) showMJPEG();
+  });
 
   // ---- Audio: Listen toggle ----
   btnListen.addEventListener('click', () => {
@@ -91,15 +125,32 @@
   // ---- Snapshot download ----
   btnSnapshot.addEventListener('click', async () => {
     try {
-      const res = await fetch('/snapshot');
-      if (!res.ok) throw new Error('Failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `snapshot_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (PetWebRTC.isConnected()) {
+        // WebRTC: capture from video element via canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = videoWebRTC.videoWidth;
+        canvas.height = videoWebRTC.videoHeight;
+        canvas.getContext('2d').drawImage(videoWebRTC, 0, 0);
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `snapshot_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }, 'image/jpeg', 0.95);
+      } else {
+        // MJPEG: fetch from server
+        const res = await fetch('/snapshot');
+        if (!res.ok) throw new Error('Failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `snapshot_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
       alert('スナップショットの取得に失敗しました');
     }
@@ -173,10 +224,19 @@
       });
       if (res.ok) {
         settingsPanel.hidden = true;
-        // Reload video stream with new settings
-        videoOverlay.hidden = false;
-        videoStream.src = '/video_feed?' + Date.now();
-        checkVideoLoaded();
+        // Reconnect WebRTC with new camera settings
+        if (PetWebRTC.isConnected()) {
+          PetWebRTC.close();
+          videoOverlay.hidden = false;
+          PetWebRTC.connect(videoWebRTC).then((ok) => {
+            if (!ok) showMJPEG();
+          });
+        } else {
+          // MJPEG fallback: reload stream
+          videoOverlay.hidden = false;
+          videoMJPEG.src = '/video_feed?' + Date.now();
+          checkVideoLoaded();
+        }
       } else {
         const data = await res.json();
         alert(data.error?.message || '設定の適用に失敗しました');
@@ -209,8 +269,9 @@
       if (!res.ok) return;
       const data = await res.json();
       uptimeEl.textContent = formatUptime(data.uptime_seconds);
+      const mode = PetWebRTC.isConnected() ? 'WebRTC' : 'MJPEG';
       statusFps.textContent = `${data.fps} fps`;
-      statusRes.textContent = data.resolution;
+      statusRes.textContent = `${data.resolution} (${mode})`;
       const mic = data.audio.microphone_active ? 'ON' : 'OFF';
       const listeners = data.audio.listening_clients;
       statusAudio.textContent = `マイク: ${mic} / リスナー: ${listeners}`;
@@ -472,10 +533,14 @@
     });
   }
 
-  // ---- Visibility change: recover video sending after background ----
+  // ---- Visibility change: recover connections after background ----
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      // If we were sending video, check if everything is still alive
+      // WebRTC video reconnect
+      if (!PetWebRTC.isConnected()) {
+        PetWebRTC.connect(videoWebRTC);
+      }
+      // Owner video reconnect
       if (isSendingVideo && videoSocket && !videoSocket.connected) {
         console.log('[OwnerVideo] Page visible, reconnecting video socket...');
         videoSocket.connect();
@@ -486,7 +551,6 @@
         if (videoTrack && videoTrack.readyState === 'ended') {
           console.log('[OwnerVideo] Video track ended, restarting...');
           stopOwnerVideo();
-          // Auto-restart is not safe here (needs user gesture), just notify
           ownerVideoStatus.textContent = 'カメラが停止しました。再度「顔を見せる」を押してください。';
         }
       }
@@ -496,8 +560,18 @@
   // ---- Network recovery ----
   window.addEventListener('online', () => {
     console.log('[App] Network online');
+    // WebRTC video reconnect
+    if (!PetWebRTC.isConnected()) {
+      PetWebRTC.connect(videoWebRTC);
+    }
+    // Owner video reconnect
     if (isSendingVideo && videoSocket && !videoSocket.connected) {
       videoSocket.connect();
     }
+  });
+
+  // ---- Page unload: clean up WebRTC ----
+  window.addEventListener('pagehide', () => {
+    PetWebRTC.close();
   });
 })();
