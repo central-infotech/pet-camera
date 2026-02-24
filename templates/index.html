@@ -161,6 +161,11 @@
     setAppHeight();
     window.addEventListener('resize', setAppHeight);
 
+    // Unlock screen orientation for PWA
+    if (screen.orientation && screen.orientation.unlock) {
+      screen.orientation.unlock().catch(() => {});
+    }
+
     // Service Worker registration
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js")
