@@ -56,43 +56,43 @@
       他のデバイスが操作中のため、操作できません
     </div>
 
-    <!-- Audio Controls -->
-    <div class="controls audio-controls">
-      <button id="btn-listen" class="btn" title="家の音を聞く">
-        <span class="icon">&#x1F50A;</span> 聞く
-      </button>
-      <button id="btn-talk" class="btn" title="押している間話す">
-        <span class="icon">&#x1F3A4;</span> 話す
-      </button>
-      <label class="volume-control">
-        <span>音量</span>
-        <input type="range" id="volume-slider" min="0" max="100" value="80">
-      </label>
-    </div>
+    <!-- Controls toggle button -->
+    <button id="controls-toggle" class="controls-toggle" title="操作パネル表示/非表示">
+      <span id="controls-toggle-icon">&#x25B2;</span>
+    </button>
 
-    <!-- Owner Video Controls (Phase 2) -->
-    <div class="controls owner-video-controls">
-      <button id="btn-show-face" class="btn" title="フロントカメラ映像を送信">
-        <span class="icon">&#x1F4F9;</span> 顔を見せる
-      </button>
-      <span id="owner-video-status" class="status-text"></span>
-    </div>
+    <!-- Controls panel (hideable) -->
+    <div id="controls-panel">
+      <!-- Row 1: Audio + Face + Volume -->
+      <div class="controls">
+        <button id="btn-listen" class="btn" title="家の音を聞く">
+          <span class="icon">&#x1F50A;</span> 聞く
+        </button>
+        <button id="btn-talk" class="btn" title="押している間話す">
+          <span class="icon">&#x1F3A4;</span> 話す
+        </button>
+        <button id="btn-show-face" class="btn" title="フロントカメラ映像を送信">
+          <span class="icon">&#x1F4F9;</span> 顔を見せる
+        </button>
+        <span id="owner-video-status" class="status-text"></span>
+        <label class="volume-control">
+          <span>音量</span>
+          <input type="range" id="volume-slider" min="0" max="100" value="80">
+        </label>
+      </div>
 
-    <!-- Save Controls -->
-    <div class="controls save-controls">
-      <button id="btn-snapshot" class="btn" title="スマホにダウンロード">
-        <span class="icon">&#x1F4F7;</span> スマホに画像保存
-      </button>
-      <button id="btn-save" class="btn" title="PCサーバーに保存">
-        <span class="icon">&#x1F4C1;</span> PCに画像保存
-      </button>
-    </div>
-
-    <!-- Settings Controls -->
-    <div class="controls settings-controls">
-      <button id="btn-settings" class="btn" title="設定">
-        <span class="icon">&#x2699;</span> 設定
-      </button>
+      <!-- Row 2: Save + Settings -->
+      <div class="controls">
+        <button id="btn-snapshot" class="btn" title="スマホにダウンロード">
+          <span class="icon">&#x1F4F7;</span> スマホに画像保存
+        </button>
+        <button id="btn-save" class="btn" title="PCサーバーに保存">
+          <span class="icon">&#x1F4C1;</span> PCに画像保存
+        </button>
+        <button id="btn-settings" class="btn" title="設定">
+          <span class="icon">&#x2699;</span> 設定
+        </button>
+      </div>
     </div>
   </main>
 

@@ -26,6 +26,16 @@
   const brightnessVal = document.getElementById('brightness-val');
   const contrastVal = document.getElementById('contrast-val');
 
+  // ---- Controls panel toggle ----
+  const controlsPanel = document.getElementById('controls-panel');
+  const controlsToggle = document.getElementById('controls-toggle');
+  const controlsToggleIcon = document.getElementById('controls-toggle-icon');
+
+  controlsToggle.addEventListener('click', () => {
+    const isHidden = controlsPanel.classList.toggle('hidden');
+    controlsToggleIcon.textContent = isHidden ? '\u25BC' : '\u25B2';
+  });
+
   // ---- Exclusive session banner ----
   const exclusiveBanner = document.getElementById('exclusive-banner');
 
