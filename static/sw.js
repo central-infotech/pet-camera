@@ -5,7 +5,7 @@
  * Streaming data (MJPEG, WebSocket) is NOT cached.
  */
 
-const CACHE_NAME = "petcam-v6";
+const CACHE_NAME = "petcam-v7";
 const APP_SHELL = [
   "/",
   "/static/css/style.css",

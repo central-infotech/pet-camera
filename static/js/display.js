@@ -13,6 +13,17 @@
   let wakeLock = null;
   let heartbeatInterval = null;
 
+  // ---- Clear video (show black screen) ----
+  function clearVideo() {
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
+    img.removeAttribute('src');
+    clearTimeout(hideStatusTimer);
+    hideStatusTimer = null;
+  }
+
   // ---- Socket.IO connection with resilience ----
   function connect() {
     socket = io('/video', {
@@ -42,6 +53,7 @@
 
     socket.on('connect_error', (err) => {
       console.error('[Display] Connection error:', err.message);
+      clearVideo();
       statusEl.textContent = '接続エラー — 再接続中...';
       statusEl.classList.remove('hidden');
     });
@@ -76,9 +88,10 @@
         // Hide status text when receiving frames
         statusEl.classList.add('hidden');
 
-        // Reset the hide timer — show status again if frames stop
+        // Reset the hide timer — clear video if frames stop
         clearTimeout(hideStatusTimer);
         hideStatusTimer = setTimeout(() => {
+          clearVideo();
           statusEl.textContent = '映像が途切れました';
           statusEl.classList.remove('hidden');
         }, 3000);
@@ -90,6 +103,7 @@
     socket.on('video_status', (status) => {
       console.log('[Display] Status:', status);
       if (!status.sending) {
+        clearVideo();
         statusEl.textContent = '映像待機中...';
         statusEl.classList.remove('hidden');
       }
@@ -97,6 +111,7 @@
 
     socket.on('disconnect', (reason) => {
       console.log('[Display] Disconnected:', reason);
+      clearVideo();
       statusEl.textContent = '切断されました — 再接続中...';
       statusEl.classList.remove('hidden');
     });
