@@ -354,11 +354,18 @@ footer {
 
 .exclusive-banner[hidden] { display: none; }
 
-/* ---- Owner Video Controls (Phase 2) ---- */
-.owner-video-controls .status-text {
+/* ---- Owner Video Status Bar ---- */
+.owner-status-bar {
+  padding: 0.25rem 1rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
   font-size: 0.75rem;
   color: var(--text-muted);
-  margin-left: 0.5rem;
+  text-align: center;
+}
+
+.owner-status-bar:empty {
+  display: none;
 }
 
 .btn:disabled {
@@ -587,10 +594,11 @@ footer {
 
   .volume-control input[type="range"] { width: 100%; }
 
-  /* Owner video status: smaller text */
-  .owner-video-controls .status-text,
-  #owner-video-status {
+  /* Owner video status bar in landscape */
+  .owner-status-bar {
     font-size: 0.6rem;
+    padding: 0.2rem 0.3rem;
+    border-top: none;
   }
 
   /* Footer: hidden in landscape (status shown in right panel) */

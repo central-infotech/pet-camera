@@ -74,12 +74,14 @@
         <button id="btn-show-face" class="btn" title="フロントカメラ映像を送信">
           <span class="icon">&#x1F4F9;</span> 顔を見せる
         </button>
-        <span id="owner-video-status" class="status-text"></span>
         <label class="volume-control">
           <span>音量</span>
           <input type="range" id="volume-slider" min="0" max="100" value="80">
         </label>
       </div>
+
+      <!-- Owner video status row (visible only when active) -->
+      <div id="owner-video-status" class="owner-status-bar"></div>
 
       <!-- Row 2: Save + Settings -->
       <div class="controls">
