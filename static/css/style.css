@@ -540,7 +540,7 @@ footer {
   #controls-panel {
     display: flex;
     flex-direction: column;
-    width: 110px;
+    width: 140px;
     border-left: 1px solid var(--border);
     overflow-y: auto;
     overflow-x: hidden;

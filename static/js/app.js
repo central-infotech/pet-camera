@@ -303,11 +303,11 @@
       const mic = data.audio.microphone_active ? 'ON' : 'OFF';
       const listeners = data.audio.listening_clients;
       statusAudio.textContent = `マイク: ${mic} / リスナー: ${listeners}`;
-      // Sync to landscape status panel
+      // Sync to landscape status panel (use line break instead of slash)
       if (lsFps) {
         lsFps.textContent = statusFps.textContent;
         lsRes.textContent = statusRes.textContent;
-        lsAudio.textContent = statusAudio.textContent;
+        lsAudio.innerHTML = `マイク: ${mic}<br>リスナー: ${listeners}`;
       }
     } catch (err) {
       // ignore
