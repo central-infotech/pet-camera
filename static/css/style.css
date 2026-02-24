@@ -170,8 +170,8 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .controls {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: 0.4rem;
+  padding: 0.35rem 1rem;
   background: var(--surface);
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
@@ -182,12 +182,12 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -414,7 +414,7 @@ footer {
 
 /* ---- Responsive ---- */
 @media (max-width: 480px) {
-  .controls { padding: 0.4rem 0.5rem; gap: 0.35rem; }
-  .btn { padding: 0.4rem 0.5rem; font-size: 0.8rem; }
+  .controls { padding: 0.3rem 0.5rem; gap: 0.3rem; }
+  .btn { padding: 0.35rem 0.45rem; font-size: 0.78rem; }
   .volume-control input[type="range"] { width: 60px; }
 }

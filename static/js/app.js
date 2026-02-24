@@ -164,7 +164,7 @@
       const data = await res.json();
       if (res.ok) {
         btnSave.textContent = '保存しました';
-        setTimeout(() => { btnSave.innerHTML = '<span class="icon">&#x1F4BE;</span> 保存'; }, 2000);
+        setTimeout(() => { btnSave.innerHTML = '<span class="icon">&#x1F4C1;</span> PCに画像保存'; }, 2000);
       } else {
         alert(data.error?.message || '保存に失敗しました');
       }
