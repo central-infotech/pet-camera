@@ -28,7 +28,7 @@
     <div class="header-center">
       <button id="btn-reload" class="btn-reload" title="画面更新">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        画面更新
+        <span class="btn-reload-text">画面更新</span>
       </button>
     </div>
     <div class="header-right">
@@ -92,6 +92,12 @@
         <button id="btn-settings" class="btn" title="設定">
           <span class="icon">&#x2699;</span> 設定
         </button>
+      </div>
+      <!-- Landscape: status info (hidden in portrait, shown in right panel) -->
+      <div id="landscape-status" class="landscape-status">
+        <span id="ls-fps">-- fps</span>
+        <span id="ls-res">--</span>
+        <span id="ls-audio">音声: --</span>
       </div>
     </div>
   </main>

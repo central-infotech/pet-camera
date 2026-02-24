@@ -31,10 +31,24 @@
   const controlsToggle = document.getElementById('controls-toggle');
   const controlsToggleIcon = document.getElementById('controls-toggle-icon');
 
+  // Landscape detection for toggle icon direction
+  const landscapeMQ = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+
+  function updateToggleIcon() {
+    const isHidden = controlsPanel.classList.contains('hidden');
+    if (landscapeMQ.matches) {
+      controlsToggleIcon.textContent = isHidden ? '\u25B6' : '\u25C0'; // ▶ / ◀
+    } else {
+      controlsToggleIcon.textContent = isHidden ? '\u25BC' : '\u25B2'; // ▼ / ▲
+    }
+  }
+
   controlsToggle.addEventListener('click', () => {
-    const isHidden = controlsPanel.classList.toggle('hidden');
-    controlsToggleIcon.textContent = isHidden ? '\u25BC' : '\u25B2';
+    controlsPanel.classList.toggle('hidden');
+    updateToggleIcon();
   });
+
+  landscapeMQ.addEventListener('change', updateToggleIcon);
 
   // ---- Exclusive session banner ----
   const exclusiveBanner = document.getElementById('exclusive-banner');
@@ -266,6 +280,10 @@
   });
 
   // ---- Status polling ----
+  const lsFps = document.getElementById('ls-fps');
+  const lsRes = document.getElementById('ls-res');
+  const lsAudio = document.getElementById('ls-audio');
+
   function formatUptime(seconds) {
     const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
     const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
@@ -285,6 +303,12 @@
       const mic = data.audio.microphone_active ? 'ON' : 'OFF';
       const listeners = data.audio.listening_clients;
       statusAudio.textContent = `マイク: ${mic} / リスナー: ${listeners}`;
+      // Sync to landscape status panel
+      if (lsFps) {
+        lsFps.textContent = statusFps.textContent;
+        lsRes.textContent = statusRes.textContent;
+        lsAudio.textContent = statusAudio.textContent;
+      }
     } catch (err) {
       // ignore
     }
