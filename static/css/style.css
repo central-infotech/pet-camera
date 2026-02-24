@@ -397,6 +397,26 @@ footer {
   object-fit: contain;
 }
 
+#display-video:not([src]) {
+  display: none;
+}
+
+#no-signal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #888;
+  font-size: 2rem;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+#no-signal.hidden {
+  opacity: 0;
+}
+
 #display-status {
   position: absolute;
   bottom: 1rem;

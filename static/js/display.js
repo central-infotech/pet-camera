@@ -6,6 +6,7 @@
 (() => {
   const img = document.getElementById('display-video');
   const statusEl = document.getElementById('display-status');
+  const noSignalEl = document.getElementById('no-signal');
 
   let socket = null;
   let currentBlobUrl = null;
@@ -20,6 +21,7 @@
       currentBlobUrl = null;
     }
     img.removeAttribute('src');
+    noSignalEl.classList.remove('hidden');
     clearTimeout(hideStatusTimer);
     hideStatusTimer = null;
   }
@@ -85,8 +87,9 @@
         currentBlobUrl = URL.createObjectURL(blob);
         img.src = currentBlobUrl;
 
-        // Hide status text when receiving frames
+        // Hide status text and no-signal when receiving frames
         statusEl.classList.add('hidden');
+        noSignalEl.classList.add('hidden');
 
         // Reset the hide timer — clear video if frames stop
         clearTimeout(hideStatusTimer);
