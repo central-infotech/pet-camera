@@ -1,5 +1,5 @@
 /**
- * Pet Camera — Main UI logic
+ * DNG Camera — Main UI logic
  */
 (() => {
   // ---- Elements ----

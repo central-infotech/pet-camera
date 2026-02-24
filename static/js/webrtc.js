@@ -1,5 +1,5 @@
 /**
- * Pet Camera — WebRTC video module
+ * DNG Camera — WebRTC video module
  * Receives WebRTC video from the server with MJPEG fallback.
  *
  * State transitions:

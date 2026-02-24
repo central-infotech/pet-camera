@@ -1,5 +1,5 @@
 /**
- * Pet Camera — Audio module
+ * DNG Camera — Audio module
  * Handles microphone capture (getUserMedia) and speaker playback (Web Audio API)
  * via Socket.IO WebSocket connection.
  * Includes auto-reconnect with state recovery and visibility change handling.

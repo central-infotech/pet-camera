@@ -1,6 +1,6 @@
 {
-  "name": "Pet Camera",
-  "short_name": "PetCam",
+  "name": "DNG Camera",
+  "short_name": "DNGCam",
   "description": "自宅のペットをリアルタイムで見守るカメラシステム",
   "start_url": "/",
   "scope": "/",

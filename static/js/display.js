@@ -1,5 +1,5 @@
 /**
- * Pet Camera — Display page (Phase 2)
+ * DNG Camera — Display page (Phase 2)
  * Receives video frames from smartphone via Socket.IO and renders them.
  * Includes auto-reconnect, Wake Lock re-acquisition, and visibility recovery.
  */

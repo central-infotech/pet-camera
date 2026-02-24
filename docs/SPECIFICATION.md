@@ -1,4 +1,4 @@
-# Pet Camera System — 仕様書
+# 🍡DNG Camera System — 仕様書
 
 ## 1. プロジェクト概要
 
@@ -173,7 +173,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  🐾 Pet Camera    [↻ 画面更新]  ● LIVE 00:03:42 │  ← ヘッダー（中央に更新ボタン）
+│  🍡 DNG Camera    [↻ 画面更新]  ● LIVE 00:03:42 │  ← ヘッダー（中央に更新ボタン）
 ├─────────────────────────────────────────────────┤
 │                                                   │
 │            ┌──────────────────────┐               │
@@ -220,7 +220,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 
 ```
 ┌──────────────────────────┐
-│  🐾 Pet Camera           │
+│  🍡 DNG Camera           │
 ├──────────────────────────┤
 │                          │
 │  アクセストークンを       │
@@ -271,7 +271,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  🐾 Pet Camera    [↻ 画面更新]  ● LIVE 00:03:42 │
+│  🍡 DNG Camera    [↻ 画面更新]  ● LIVE 00:03:42 │
 ├─────────────────────────────────────────────────┤
 │ ┌────────┐                                       │
 │ │ 自分の  │  ← PiP: 左上ワイプ表示               │
@@ -331,7 +331,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 ```html
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Pet Camera">
+<meta name="apple-mobile-web-app-title" content="DNGCam">
 <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
 ```
 

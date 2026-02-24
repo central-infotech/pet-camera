@@ -1,11 +1,11 @@
 /**
- * Pet Camera — Service Worker
+ * DNG Camera — Service Worker
  *
  * Caches the app shell (HTML, CSS, JS, icons) for fast loading.
  * Streaming data (MJPEG, WebSocket) is NOT cached.
  */
 
-const CACHE_NAME = "petcam-v14";
+const CACHE_NAME = "petcam-v15";
 const APP_SHELL = [
   "/",
   "/static/css/style.css",
