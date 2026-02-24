@@ -21,6 +21,7 @@
       currentBlobUrl = null;
     }
     img.removeAttribute('src');
+    img.classList.add('hidden');
     noSignalEl.classList.remove('hidden');
     clearTimeout(hideStatusTimer);
     hideStatusTimer = null;
@@ -86,6 +87,7 @@
         const blob = new Blob([data], { type: 'image/jpeg' });
         currentBlobUrl = URL.createObjectURL(blob);
         img.src = currentBlobUrl;
+        img.classList.remove('hidden');
 
         // Hide status text and no-signal when receiving frames
         statusEl.classList.add('hidden');

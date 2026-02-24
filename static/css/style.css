@@ -397,7 +397,7 @@ footer {
   object-fit: contain;
 }
 
-#display-video:not([src]) {
+#display-video.hidden {
   display: none;
 }
 
