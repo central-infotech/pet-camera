@@ -408,7 +408,8 @@ footer {
   transform: translate(-50%, -50%);
   color: #888;
   font-size: 2rem;
-  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.3em;
   pointer-events: none;
   transition: opacity 0.3s;
 }
@@ -634,4 +635,79 @@ footer {
     border-top: 1px solid var(--border);
     gap: 0.1rem;
   }
+}
+
+/* ---- PWA Install Prompt ---- */
+.pwa-install-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pwa-install-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem 1.5rem;
+  width: 90%;
+  max-width: 320px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.pwa-install-dialog .pwa-icon {
+  font-size: 3rem;
+  margin-bottom: 0.75rem;
+}
+
+.pwa-install-dialog h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
+.pwa-install-dialog p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.pwa-install-dialog .pwa-btn-install {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+  transition: background 0.2s;
+}
+
+.pwa-install-dialog .pwa-btn-install:hover {
+  background: var(--accent-hover);
+}
+
+.pwa-install-dialog .pwa-btn-dismiss {
+  display: block;
+  width: 100%;
+  padding: 0.6rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.pwa-install-dialog .pwa-btn-dismiss:hover {
+  color: var(--text);
 }
