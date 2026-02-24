@@ -994,6 +994,10 @@ btnSnapshot.addEventListener('click', async () => {
 - ▲ = パネル表示中（タップで隠す）、▼ = パネル非表示（タップで表示）
 - footer（FPS等）はトグル対象外で常時表示
 
+**画面回転:**
+- `manifest.json` の `orientation` を `"any"` に設定し、PWA インストール時も端末の向きに応じて自動回転
+- 横向き時は操作パネルを隠すことで映像エリアを最大化可能
+
 ---
 
 ## 8. MJPEG フォールバック
