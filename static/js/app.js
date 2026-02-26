@@ -19,6 +19,7 @@
   const statusAudio = document.getElementById('status-audio');
 
   // Settings inputs
+  const settingCamera = document.getElementById('setting-camera');
   const settingRes = document.getElementById('setting-resolution');
   const settingFps = document.getElementById('setting-fps');
   const settingBrightness = document.getElementById('setting-brightness');
@@ -219,28 +220,65 @@
 
   async function loadSettings() {
     try {
-      const res = await fetch('/api/settings');
-      const s = await res.json();
+      const [settingsRes, camerasRes] = await Promise.all([
+        fetch('/api/settings'),
+        fetch('/api/cameras'),
+      ]);
+      const s = await settingsRes.json();
       settingRes.value = `${s.resolution.width}x${s.resolution.height}`;
       settingFps.value = s.fps;
       settingBrightness.value = s.brightness;
       settingContrast.value = s.contrast;
       brightnessVal.textContent = s.brightness;
       contrastVal.textContent = s.contrast;
+
+      // Populate camera device dropdown
+      if (camerasRes.ok) {
+        const c = await camerasRes.json();
+        settingCamera.innerHTML = '';
+        c.cameras.forEach((cam) => {
+          const opt = document.createElement('option');
+          opt.value = cam.index;
+          const irLabel = cam.is_ir ? ' [IR]' : '';
+          opt.textContent = `${cam.index}: ${cam.width}x${cam.height}${irLabel}`;
+          if (cam.index === c.current_index) opt.selected = true;
+          settingCamera.appendChild(opt);
+        });
+      }
     } catch (err) {
       console.error('Failed to load settings', err);
     }
   }
 
   btnApply.addEventListener('click', async () => {
-    const [w, h] = settingRes.value.split('x').map(Number);
-    const body = {
-      resolution: { width: w, height: h },
-      fps: parseInt(settingFps.value),
-      brightness: parseInt(settingBrightness.value),
-      contrast: parseInt(settingContrast.value),
-    };
     try {
+      // Switch camera device if changed
+      const selectedCameraIndex = parseInt(settingCamera.value);
+      const camRes = await fetch('/api/cameras');
+      if (camRes.ok) {
+        const camData = await camRes.json();
+        if (selectedCameraIndex !== camData.current_index) {
+          const switchRes = await fetch('/api/cameras/current', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index: selectedCameraIndex }),
+          });
+          if (!switchRes.ok) {
+            const data = await switchRes.json();
+            alert(data.error?.message || 'カメラの切り替えに失敗しました');
+            return;
+          }
+        }
+      }
+
+      // Apply other settings
+      const [w, h] = settingRes.value.split('x').map(Number);
+      const body = {
+        resolution: { width: w, height: h },
+        fps: parseInt(settingFps.value),
+        brightness: parseInt(settingBrightness.value),
+        contrast: parseInt(settingContrast.value),
+      };
       const res = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

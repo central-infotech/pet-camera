@@ -20,6 +20,12 @@ PORT = 5555
 SECRET_KEY = os.environ.get("PET_CAMERA_SECRET", os.urandom(32).hex())
 
 # Camera defaults
+# Set PET_CAMERA_INDEX to a specific device index, or leave unset for auto-detect
+CAMERA_INDEX: int | None = (
+    int(os.environ["PET_CAMERA_INDEX"])
+    if os.environ.get("PET_CAMERA_INDEX", "").strip()
+    else None  # None = auto-detect (skip IR cameras)
+)
 DEFAULT_RESOLUTION = (1280, 720)
 DEFAULT_FPS = 15
 DEFAULT_BRIGHTNESS = 50

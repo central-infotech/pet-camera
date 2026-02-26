@@ -19,7 +19,7 @@ from .auth import (
     setup_access_log,
     validate_socketio_auth,
 )
-from .camera import Camera
+from .camera import Camera, enumerate_cameras, find_best_camera_index
 from .audio import AudioCapture, AudioPlayer
 from . import webauthn_auth
 from . import webrtc
@@ -53,7 +53,14 @@ socketio = SocketIO(app, cors_allowed_origins=None, async_mode="threading",
 # ---------------------------------------------------------------------------
 # Subsystems
 # ---------------------------------------------------------------------------
-camera = Camera()
+_camera_index = (
+    config.CAMERA_INDEX
+    if config.CAMERA_INDEX is not None
+    else find_best_camera_index()
+)
+camera = Camera(camera_index=_camera_index)
+logger.info("Camera: using index %d (config=%s)", _camera_index,
+            "env" if config.CAMERA_INDEX is not None else "auto-detect")
 audio_capture = AudioCapture()
 audio_player = AudioPlayer()
 
@@ -218,6 +225,7 @@ def status():
         "resolution": camera.resolution_str,
         "clients_connected": len(_connected_clients),
         "camera_index": camera.camera_index,
+        "camera_active": camera.is_active,
         "audio": {
             "microphone_active": audio_capture.is_active,
             "speaker_active": audio_player.is_active,
@@ -248,6 +256,38 @@ def patch_settings():
     webrtc.reset_source_track()
 
     return jsonify(result)
+
+
+# --- Camera device selection ---
+
+@app.route("/api/cameras", methods=["GET"])
+@login_required
+def list_cameras():
+    """List available camera devices."""
+    cameras = enumerate_cameras()
+    return jsonify({
+        "cameras": cameras,
+        "current_index": camera.camera_index,
+    })
+
+
+@app.route("/api/cameras/current", methods=["PATCH"])
+@login_required
+def switch_camera_endpoint():
+    """Switch to a different camera device."""
+    data = request.get_json(silent=True)
+    if not data or "index" not in data:
+        return jsonify({"error": {"code": "INVALID_PARAMETER",
+                                  "message": "index is required"}}), 400
+    idx = data["index"]
+    if not isinstance(idx, int) or idx < 0:
+        return jsonify({"error": {"code": "INVALID_PARAMETER",
+                                  "message": "index must be a non-negative integer"}}), 400
+
+    camera.switch_camera(idx)
+    webrtc.reset_source_track()
+
+    return jsonify({"current_index": camera.camera_index})
 
 
 # --- WebRTC ---

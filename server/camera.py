@@ -12,6 +12,70 @@ from . import config
 logger = logging.getLogger(__name__)
 
 
+def enumerate_cameras(max_index: int = 10) -> list[dict]:
+    """Probe camera indices and return list of available cameras.
+
+    Each entry contains:
+      - index: int
+      - name: str (backend-reported name, or fallback)
+      - width, height: native resolution reported by the device
+      - is_ir: bool heuristic — True if the device looks like an IR camera
+    """
+    cameras: list[dict] = []
+    for i in range(max_index):
+        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap.release()
+            continue
+
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        backend = cap.getBackendName()
+
+        # Read a test frame to detect IR camera (very dark / grayscale)
+        is_ir = False
+        ret, frame = cap.read()
+        if ret and frame is not None:
+            # IR cameras produce very dark frames or single-channel-like output
+            mean_val = float(np.mean(frame))
+            # Check if the image is effectively grayscale (R≈G≈B)
+            if len(frame.shape) == 3 and frame.shape[2] == 3:
+                b, g, r = cv2.split(frame)
+                diff_rg = float(np.mean(np.abs(r.astype(int) - g.astype(int))))
+                diff_rb = float(np.mean(np.abs(r.astype(int) - b.astype(int))))
+                # IR cameras tend to produce near-grayscale with very low brightness
+                if mean_val < 5 or (mean_val < 30 and diff_rg < 3 and diff_rb < 3):
+                    is_ir = True
+            elif mean_val < 5:
+                is_ir = True
+
+        cap.release()
+
+        name = f"Camera {i} ({backend})"
+        cameras.append({
+            "index": i,
+            "name": name,
+            "width": w,
+            "height": h,
+            "is_ir": is_ir,
+        })
+
+    return cameras
+
+
+def find_best_camera_index() -> int:
+    """Auto-detect the best (non-IR) camera index."""
+    cameras = enumerate_cameras()
+    if not cameras:
+        return 0
+    # Prefer non-IR cameras
+    for cam in cameras:
+        if not cam["is_ir"]:
+            return cam["index"]
+    # Fallback to first camera
+    return cameras[0]["index"]
+
+
 class Camera:
     def __init__(self, camera_index: int = 0):
         self._index = camera_index
@@ -194,6 +258,19 @@ class Camera:
     @property
     def camera_index(self) -> int:
         return self._index
+
+    def switch_camera(self, new_index: int):
+        """Switch to a different camera device by index."""
+        if new_index == self._index:
+            return
+        logger.info("Camera: switching from index %d to %d", self._index, new_index)
+        was_running = self._running
+        if was_running:
+            self.stop()
+        self._index = new_index
+        self._frame = None
+        if was_running:
+            self.start()
 
     @property
     def is_active(self) -> bool:
