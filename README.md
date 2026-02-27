@@ -37,7 +37,27 @@
 
 ## セットアップ
 
-### 1. 初期セットアップ
+### 1. Git・Tailscale の準備
+
+**Git** がインストールされていない場合:
+
+1. [git-scm.com](https://git-scm.com/) からダウンロードしてインストール
+2. インストーラーの設定はすべてデフォルトのままで OK
+
+**Tailscale** のアカウントがない場合:
+
+1. [tailscale.com](https://tailscale.com/) でアカウントを作成（Google / Microsoft アカウントで登録可）
+2. PC に Tailscale をインストールしてログイン
+3. スマホにも Tailscale アプリをインストールして同じアカウントでログイン
+
+### 2. リポジトリのクローン
+
+```batch
+git clone https://github.com/central-infotech/pet-camera.git
+cd pet-camera
+```
+
+### 3. 初期セットアップ
 
 ```batch
 setup.bat
@@ -45,7 +65,7 @@ setup.bat
 
 Python 仮想環境の作成、依存パッケージのインストール、ディレクトリの作成が行われます。
 
-### 2. 環境変数の設定
+### 4. 環境変数の設定
 
 管理者権限のコマンドプロンプトで:
 
@@ -54,13 +74,13 @@ setx /M PET_CAMERA_TOKEN "あなたの秘密のトークン"
 setx /M PET_CAMERA_ENV "production"
 ```
 
-### 3. TLS 証明書の取得
+### 5. TLS 証明書の取得
 
 ```batch
 tailscale cert --cert-file "certs\マシン名.tailnet名.ts.net.crt" --key-file "certs\マシン名.tailnet名.ts.net.key" マシン名.tailnet名.ts.net
 ```
 
-### 4. サーバーの起動
+### 6. サーバーの起動
 
 **手動起動 (テスト用):**
 
@@ -74,7 +94,7 @@ venv\Scripts\python.exe run.py
 install-service.bat    REM 管理者として実行
 ```
 
-### 5. スマホからアクセス
+### 7. スマホからアクセス
 
 1. スマホで Tailscale に接続
 2. ブラウザで `https://マシン名.tailnet名.ts.net:5555` にアクセス
