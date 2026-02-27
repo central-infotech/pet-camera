@@ -77,6 +77,9 @@ def find_best_camera_index() -> int:
 
 
 class Camera:
+    # Number of consecutive open/read failures before attempting auto-recovery
+    _RECOVERY_THRESHOLD = 3
+
     def __init__(self, camera_index: int = 0):
         self._index = camera_index
         self._cap: cv2.VideoCapture | None = None
@@ -87,12 +90,18 @@ class Camera:
         self._fps_timer = time.time()
         self._running = False
         self._thread: threading.Thread | None = None
+        self._consecutive_failures = 0
+        self._on_camera_switch: callable | None = None  # callback after auto-recovery
 
         # Current settings
         self._resolution = list(config.DEFAULT_RESOLUTION)
         self._fps = config.DEFAULT_FPS
         self._brightness = config.DEFAULT_BRIGHTNESS
         self._contrast = config.DEFAULT_CONTRAST
+
+    def set_on_camera_switch(self, callback: callable):
+        """Register a callback invoked after auto-recovery switches cameras."""
+        self._on_camera_switch = callback
 
     def start(self):
         if self._running:
@@ -133,10 +142,41 @@ class Camera:
         self._cap.set(cv2.CAP_PROP_BRIGHTNESS, self._brightness / 100.0 * 255)
         self._cap.set(cv2.CAP_PROP_CONTRAST, self._contrast / 100.0 * 255)
 
+    def _try_recover_camera(self) -> bool:
+        """Attempt to find and switch to a working camera."""
+        logger.info("Camera: auto-recovery — scanning for available cameras...")
+        cameras = enumerate_cameras()
+        for cam in cameras:
+            if cam["index"] == self._index:
+                continue  # skip current (broken) index
+            if cam["is_ir"]:
+                continue  # skip IR cameras
+            old_index = self._index
+            self._index = cam["index"]
+            if self._open():
+                logger.info(
+                    "Camera: auto-recovery succeeded — switched from index %d to %d",
+                    old_index, self._index,
+                )
+                self._consecutive_failures = 0
+                if self._on_camera_switch:
+                    self._on_camera_switch()
+                return True
+            # open failed, try next
+            if self._cap:
+                self._cap.release()
+                self._cap = None
+        logger.warning("Camera: auto-recovery found no working camera")
+        return False
+
     def _capture_loop(self):
         while self._running:
             if self._cap is None or not self._cap.isOpened():
                 if not self._open():
+                    self._consecutive_failures += 1
+                    if self._consecutive_failures >= self._RECOVERY_THRESHOLD:
+                        if self._try_recover_camera():
+                            continue
                     logger.warning("Camera: retrying in 5 seconds...")
                     time.sleep(5)
                     continue
@@ -146,8 +186,14 @@ class Camera:
                 logger.warning("Camera: frame read failed, reopening...")
                 self._cap.release()
                 self._cap = None
+                self._consecutive_failures += 1
+                if self._consecutive_failures >= self._RECOVERY_THRESHOLD:
+                    if self._try_recover_camera():
+                        continue
                 time.sleep(1)
                 continue
+
+            self._consecutive_failures = 0
 
             with self._lock:
                 self._frame = frame

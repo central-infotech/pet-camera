@@ -59,6 +59,7 @@ _camera_index = (
     else find_best_camera_index()
 )
 camera = Camera(camera_index=_camera_index)
+camera.set_on_camera_switch(lambda: webrtc.reset_source_track())
 logger.info("Camera: using index %d (config=%s)", _camera_index,
             "env" if config.CAMERA_INDEX is not None else "auto-detect")
 audio_capture = AudioCapture()
