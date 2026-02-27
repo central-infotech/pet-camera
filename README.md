@@ -129,4 +129,4 @@ pet-camera/
 
 ## ライセンス
 
-Private — 個人利用
+[MIT License](LICENSE)
