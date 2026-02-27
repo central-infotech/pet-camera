@@ -104,7 +104,7 @@ install-service.bat    REM 管理者として実行
 2. ブラウザで `https://マシン名.tailnet名.ts.net:5555` にアクセス
 3. トークンを入力してログイン
 
-**PC ブラウザ（飼い主映像の表示用）:**
+**PC ブラウザ（ペット映像の表示用）:**
 
 - `https://マシン名.tailnet名.ts.net:5555/display` にアクセス
 
