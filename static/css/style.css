@@ -648,6 +648,10 @@ footer {
   justify-content: center;
 }
 
+.pwa-install-overlay[hidden] {
+  display: none;
+}
+
 .pwa-install-dialog {
   background: var(--surface);
   border: 1px solid var(--border);
