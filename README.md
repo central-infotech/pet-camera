@@ -29,6 +29,7 @@
 | 項目 | 要件 |
 |------|------|
 | OS | Windows 10 / 11 |
+| Git | [git-scm.com](https://git-scm.com/) |
 | Python | 3.10 以上 |
 | カメラ | USB または内蔵 Web カメラ |
 | マイク・スピーカー | 内蔵または外部接続 |
