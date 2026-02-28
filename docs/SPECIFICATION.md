@@ -164,6 +164,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 |---|------|------|
 | F-18 | PWA 対応 | Web App Manifest + Service Worker でホーム画面追加・スタンドアロン起動に対応。Android Chrome / iOS Safari 両対応 |
 | F-19 | 画面更新ボタン | ヘッダー中央にアイコン付きの「画面更新」ボタンを配置。タップで `location.reload()` を実行 |
+| F-20 | 読み込み中スピナー表示 | 画面更新ボタン押下時およびアイドル状態（バックグラウンド）からの復帰時に、映像エリアにスピナーアニメーション付きの「読み込み中...」オーバーレイを表示する。映像接続が復旧したら自動的に非表示にする |
 
 ---
 
@@ -1066,6 +1067,7 @@ reconnect → 切断前に「顔を見せる」中だった場合 → video_send
 | 対策 | 実装箇所 | 説明 |
 |------|---------|------|
 | Page Visibility API による検知 | `app.js`, `audio.js` | `document.addEventListener('visibilitychange')` でバックグラウンド化・復帰を検知 |
+| 復帰時のローディング表示 | `app.js`, `index.html`, `style.css` | 復帰時に映像の再接続が必要な場合、スピナーアニメーション付き「読み込み中...」オーバーレイを表示。接続完了後に自動非表示 |
 | 復帰時の Socket.IO 再接続確認 | `app.js`, `audio.js` | `document.visibilityState === 'visible'` 時に `socket.connected` を確認し、未接続なら `socket.connect()` を呼ぶ |
 | メディアストリーム再取得 | `app.js` | フロントカメラの `MediaStream` が停止している場合、`getUserMedia` を再呼び出し |
 | AudioContext 再開 | `audio.js` | ブラウザが `AudioContext` を `suspended` にした場合、`audioCtx.resume()` を呼ぶ |
@@ -1209,10 +1211,12 @@ NSSM は既にサービス化に使用しているが、以下の設定を明示
 1. OS がタイマーと WebSocket を停止
 2. フォアグラウンド復帰時:
    - visibilitychange イベント発火
+   - 映像の再接続が必要な場合、スピナー付き「読み込み中...」オーバーレイを表示
    - Socket.IO 接続状態を確認 → 未接続なら再接続
    - AudioContext が suspended なら resume()
    - MediaStream が停止していたら getUserMedia 再呼び出し
    - 「顔を見せる」中だった場合、video_send_start 再送信
+   - 映像接続が復旧したらオーバーレイを自動非表示
 3. ユーザー操作: ブラウザを開くだけ
 
 【シナリオ C: PC のネットワークが一時切断した（WiFi 再接続等）】

@@ -43,7 +43,12 @@
       <video id="video-stream-webrtc" autoplay playsinline muted hidden></video>
       <img id="video-stream-mjpeg" src="/video_feed" alt="Live Feed">
       <div id="video-overlay" class="overlay" hidden>
+        <div class="spinner"></div>
         <p>カメラに接続中...</p>
+      </div>
+      <div id="loading-overlay" class="overlay" hidden>
+        <div class="spinner"></div>
+        <p>読み込み中...</p>
       </div>
       <!-- PiP: self-preview during "顔を見せる" -->
       <div id="owner-pip" class="owner-pip" hidden>
@@ -196,7 +201,10 @@
         .catch(err => console.warn("SW registration failed:", err));
     }
     // Reload button
-    document.getElementById("btn-reload").addEventListener("click", () => location.reload());
+    document.getElementById("btn-reload").addEventListener("click", () => {
+      document.getElementById("loading-overlay").hidden = false;
+      location.reload();
+    });
 
     // PWA Install Prompt
     (function() {

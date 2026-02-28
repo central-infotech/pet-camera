@@ -95,6 +95,8 @@
   PetWebRTC.onConnected = () => {
     console.log('[App] WebRTC connected');
     showWebRTC();
+    const lo = document.getElementById('loading-overlay');
+    if (lo) lo.hidden = true;
   };
 
   PetWebRTC.onDisconnected = () => {
@@ -104,6 +106,8 @@
   PetWebRTC.onFallback = () => {
     console.log('[App] Falling back to MJPEG');
     showMJPEG();
+    const lo = document.getElementById('loading-overlay');
+    if (lo) lo.hidden = true;
   };
 
   // Initial connection
@@ -606,11 +610,21 @@
   }
 
   // ---- Visibility change: recover connections after background ----
+  const loadingOverlay = document.getElementById('loading-overlay');
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+      // Show loading overlay while recovering
+      const needsVideoReconnect = !PetWebRTC.isConnected();
+      if (needsVideoReconnect) {
+        loadingOverlay.hidden = false;
+      }
+
       // WebRTC video reconnect
-      if (!PetWebRTC.isConnected()) {
-        PetWebRTC.connect(videoWebRTC);
+      if (needsVideoReconnect) {
+        PetWebRTC.connect(videoWebRTC).then(() => {
+          loadingOverlay.hidden = true;
+        });
       }
       // Owner video reconnect
       if (isSendingVideo && videoSocket && !videoSocket.connected) {
