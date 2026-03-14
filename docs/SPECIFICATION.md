@@ -164,7 +164,7 @@ Windows PC の内蔵カメラ（またはUSBカメラ）を常時稼働させ、
 |---|------|------|
 | F-18 | PWA 対応 | Web App Manifest + Service Worker でホーム画面追加・スタンドアロン起動に対応。Android Chrome / iOS Safari 両対応 |
 | F-19 | 画面更新ボタン | ヘッダー中央にアイコン付きの「画面更新」ボタンを配置。タップで `location.reload()` を実行 |
-| F-20 | 読み込み中スピナー表示 | 画面更新ボタン押下時およびアイドル状態（バックグラウンド）からの復帰時に、映像エリアにスピナーアニメーション付きの「読み込み中...」オーバーレイを表示する。WebRTC 接続状態に関わらず復帰時は常に表示し、実際の映像フレームが描画されてから自動的に非表示にする（`requestVideoFrameCallback` API を使用、非対応ブラウザでは `currentTime` ポーリングでフォールバック、10秒のセーフティタイムアウト付き） |
+| F-20 | 読み込み中スピナー表示 | 画面更新ボタン押下時およびアイドル状態（バックグラウンド）からの復帰時に、映像エリアにスピナーアニメーション付きの「読み込み中...」オーバーレイを表示する。WebRTC 接続状態に関わらず復帰時は常に表示し、実際の映像フレームが描画されてから自動的に非表示にする（`requestVideoFrameCallback` API を使用、非対応ブラウザでは `currentTime` ポーリングでフォールバック、5秒のフレーム待ちタイムアウト + 15秒のグローバル安全タイムアウト付き）。iOS がバックグラウンドで video 要素を一時停止するため、復帰時に `play()` を明示的に呼び出す |
 
 ---
 
@@ -1067,7 +1067,7 @@ reconnect → 切断前に「顔を見せる」中だった場合 → video_send
 | 対策 | 実装箇所 | 説明 |
 |------|---------|------|
 | Page Visibility API による検知 | `app.js`, `audio.js` | `document.addEventListener('visibilitychange')` でバックグラウンド化・復帰を検知 |
-| 復帰時のローディング表示 | `app.js`, `index.html`, `style.css` | 復帰時は WebRTC 接続状態に関わらず常にスピナーアニメーション付き「読み込み中...」オーバーレイを表示。WebRTC 接続中の場合は `requestVideoFrameCallback`（非対応ブラウザでは `currentTime` ポーリング）で実際の映像フレーム描画を検知してから非表示にする。再接続が必要な場合は `onConnected` / MJPEG フォールバック時の画像読み込み完了で非表示。10秒のセーフティタイムアウト付き |
+| 復帰時のローディング表示 | `app.js`, `index.html`, `style.css` | 復帰時は WebRTC 接続状態に関わらず常にスピナーアニメーション付き「読み込み中...」オーバーレイを表示。iOS がバックグラウンドで video 要素を一時停止するため `play()` を明示的に呼び出す。WebRTC 接続中の場合は `requestVideoFrameCallback`（非対応ブラウザでは `currentTime` ポーリング）で実際の映像フレーム描画を検知してから非表示にする（5秒タイムアウト）。再接続が必要な場合は `onConnected` / MJPEG フォールバック時の画像読み込み完了で非表示。全ケース共通で15秒のグローバル安全タイムアウト付き（復旧失敗時も画面が永久にフリーズしない） |
 | 復帰時の Socket.IO 再接続確認 | `app.js`, `audio.js` | `document.visibilityState === 'visible'` 時に `socket.connected` を確認し、未接続なら `socket.connect()` を呼ぶ |
 | メディアストリーム再取得 | `app.js` | フロントカメラの `MediaStream` が停止している場合、`getUserMedia` を再呼び出し |
 | AudioContext 再開 | `audio.js` | ブラウザが `AudioContext` を `suspended` にした場合、`audioCtx.resume()` を呼ぶ |
@@ -1211,8 +1211,8 @@ NSSM は既にサービス化に使用しているが、以下の設定を明示
 1. OS がタイマーと WebSocket を停止
 2. フォアグラウンド復帰時:
    - visibilitychange イベント発火
-   - WebRTC 接続状態に関わらず即座にスピナー付き「読み込み中...」オーバーレイを表示
-   - WebRTC 接続中の場合: `requestVideoFrameCallback` で実際の映像フレーム描画を待ってからオーバーレイ非表示
+   - WebRTC 接続状態に関わらず即座にスピナー付き「読み込み中...」オーバーレイを表示（15秒のグローバル安全タイムアウト付き）
+   - WebRTC 接続中の場合: iOS 向けに `video.play()` を明示呼び出し → `requestVideoFrameCallback` で実際の映像フレーム描画を待ってからオーバーレイ非表示（5秒タイムアウト）
    - WebRTC 切断の場合: 再接続を試行 → `onConnected` または MJPEG フォールバック時の画像読み込み完了でオーバーレイ非表示
    - Socket.IO 接続状態を確認 → 未接続なら再接続
    - AudioContext が suspended なら resume()

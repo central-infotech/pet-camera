@@ -634,8 +634,8 @@
       }
       requestAnimationFrame(poll);
     }
-    // Safety timeout: hide after 10 s even if no frame received
-    setTimeout(finish, 10000);
+    // Safety timeout: hide after 5 s even if no frame received
+    setTimeout(finish, 5000);
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -643,8 +643,13 @@
       // Always show loading overlay while video stream recovers
       loadingOverlay.hidden = false;
 
+      // Global safety: ensure overlay eventually hides even if all recovery fails
+      setTimeout(() => { loadingOverlay.hidden = true; }, 15000);
+
       if (PetWebRTC.isConnected()) {
-        // WebRTC still reports connected — wait for actual video frame
+        // iOS suspends video in background — nudge playback
+        videoWebRTC.play().catch(() => {});
+        // Wait for actual video frame before hiding overlay
         waitForVideoFrame(videoWebRTC, () => {
           loadingOverlay.hidden = true;
         });
