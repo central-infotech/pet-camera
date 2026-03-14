@@ -67,12 +67,17 @@
   const videoWebRTC = document.getElementById('video-stream-webrtc');
   const videoMJPEG = document.getElementById('video-stream-mjpeg');
   const videoOverlay = document.getElementById('video-overlay');
+  const loadingOverlay = document.getElementById('loading-overlay');
 
   function checkVideoLoaded() {
     if (videoMJPEG.naturalWidth > 0) {
       videoOverlay.hidden = true;
+      loadingOverlay.hidden = true;
     } else {
-      videoOverlay.hidden = false;
+      // Show video-overlay only if loading-overlay is not already visible
+      if (loadingOverlay.hidden) {
+        videoOverlay.hidden = false;
+      }
       requestAnimationFrame(checkVideoLoaded);
     }
   }
@@ -95,8 +100,7 @@
   PetWebRTC.onConnected = () => {
     console.log('[App] WebRTC connected');
     showWebRTC();
-    const lo = document.getElementById('loading-overlay');
-    if (lo) lo.hidden = true;
+    loadingOverlay.hidden = true;
   };
 
   PetWebRTC.onDisconnected = () => {
@@ -106,8 +110,7 @@
   PetWebRTC.onFallback = () => {
     console.log('[App] Falling back to MJPEG');
     showMJPEG();
-    const lo = document.getElementById('loading-overlay');
-    if (lo) lo.hidden = true;
+    // loading-overlay is hidden by checkVideoLoaded when MJPEG image loads
   };
 
   // Initial connection
@@ -610,22 +613,46 @@
   }
 
   // ---- Visibility change: recover connections after background ----
-  const loadingOverlay = document.getElementById('loading-overlay');
+
+  /** Wait for an actual video frame to be rendered, then call callback. */
+  function waitForVideoFrame(videoEl, callback) {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      callback();
+    };
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+      videoEl.requestVideoFrameCallback(finish);
+    } else {
+      // Fallback: detect currentTime progression
+      const t0 = videoEl.currentTime;
+      function poll() {
+        if (done) return;
+        if (videoEl.currentTime !== t0) finish();
+        else requestAnimationFrame(poll);
+      }
+      requestAnimationFrame(poll);
+    }
+    // Safety timeout: hide after 10 s even if no frame received
+    setTimeout(finish, 10000);
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      // Show loading overlay while recovering
-      const needsVideoReconnect = !PetWebRTC.isConnected();
-      if (needsVideoReconnect) {
-        loadingOverlay.hidden = false;
-      }
+      // Always show loading overlay while video stream recovers
+      loadingOverlay.hidden = false;
 
-      // WebRTC video reconnect
-      if (needsVideoReconnect) {
-        PetWebRTC.connect(videoWebRTC).then(() => {
+      if (PetWebRTC.isConnected()) {
+        // WebRTC still reports connected — wait for actual video frame
+        waitForVideoFrame(videoWebRTC, () => {
           loadingOverlay.hidden = true;
         });
+      } else {
+        // Need full reconnect — onConnected / onFallback will hide overlay
+        PetWebRTC.connect(videoWebRTC);
       }
+
       // Owner video reconnect
       if (isSendingVideo && videoSocket && !videoSocket.connected) {
         console.log('[OwnerVideo] Page visible, reconnecting video socket...');
