@@ -1071,6 +1071,8 @@ reconnect → 切断前に「顔を見せる」中だった場合 → video_send
 | 復帰時の Socket.IO 再接続確認 | `app.js`, `audio.js` | `document.visibilityState === 'visible'` 時に `socket.connected` を確認し、未接続なら `socket.connect()` を呼ぶ |
 | メディアストリーム再取得 | `app.js` | フロントカメラの `MediaStream` が停止している場合、`getUserMedia` を再呼び出し |
 | AudioContext 再開 | `audio.js` | ブラウザが `AudioContext` を `suspended` にした場合、`audioCtx.resume()` を呼ぶ |
+| WebRTC 再接続（指数バックオフ） | `webrtc.js` | 接続失敗時は 2秒→4秒→8秒→...→最大30秒 の指数バックオフで無制限リトライ。`connect()` 明示呼び出し時（フォアグラウンド復帰・ネットワーク復帰）はリトライカウントをリセットし即座に再接続を試行 |
+| 多重起動防止 | `app.js` | BroadcastChannel API で同一ブラウザ/PWA の複数インスタンスを検知し、古いインスタンスの WebRTC・音声接続を自動切断。通信量の意図しない倍増を防止 |
 
 #### ディスプレイ側ブラウザの画面スリープ
 

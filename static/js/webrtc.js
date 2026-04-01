@@ -17,6 +17,7 @@ const PetWebRTC = (() => {
   let retryCount = 0;
 
   const RETRY_BASE_DELAY = 2000;
+  const RETRY_MAX_DELAY = 30000;
 
   // ── Callbacks ──
   let _onConnected = null;
@@ -30,8 +31,10 @@ const PetWebRTC = (() => {
   async function connect(videoEl) {
     _isClosing = false;
     _videoEl = videoEl;
+    retryCount = 0;
 
     // Clean up any existing connection (without triggering reconnect)
+    _cancelRetryTimer();
     _internalClose();
 
     try {
@@ -144,7 +147,7 @@ const PetWebRTC = (() => {
     retryCount++;
     const delay = initialDelay > 0
       ? initialDelay
-      : RETRY_BASE_DELAY * Math.pow(2, retryCount - 1);
+      : Math.min(RETRY_BASE_DELAY * Math.pow(2, retryCount - 1), RETRY_MAX_DELAY);
     console.log('[WebRTC] Retry ' + retryCount + ' in ' + delay + 'ms');
 
     _retryTimer = setTimeout(() => {
