@@ -269,8 +269,18 @@ const PetAudio = (() => {
     }
   });
 
+  function disconnect() {
+    if (isListening) stopListening();
+    if (isTalking) stopTalking();
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+  }
+
   return {
     connect,
+    disconnect,
     startListening,
     stopListening,
     startTalking,

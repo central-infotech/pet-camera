@@ -1,11 +1,10 @@
 /**
  * DNG Camera — WebRTC video module
- * Receives WebRTC video from the server with MJPEG fallback.
+ * Receives WebRTC video from the server.
  *
  * State transitions:
  *   IDLE -> CONNECTING -> CONNECTED -> (DISCONNECTED -> CONNECTING | IDLE)
  *                     \-> RETRYING -> CONNECTING
- *                     \-> FALLBACK (MJPEG) -> periodic CONNECTING retry
  */
 const PetWebRTC = (() => {
   let pc = null;
@@ -15,17 +14,13 @@ const PetWebRTC = (() => {
   // ── State ──
   let _isClosing = false;
   let _retryTimer = null;
-  let _fallbackTimer = null;
   let retryCount = 0;
 
-  const MAX_RETRIES = 5;
   const RETRY_BASE_DELAY = 2000;
-  const FALLBACK_RETRY_INTERVAL = 60000;
 
   // ── Callbacks ──
   let _onConnected = null;
   let _onDisconnected = null;
-  let _onFallback = null;
 
   /**
    * Start a WebRTC connection.
@@ -57,7 +52,6 @@ const PetWebRTC = (() => {
 
         if (state === 'connected') {
           retryCount = 0;
-          _cancelFallbackTimer();
           if (_onConnected) _onConnected();
         } else if (state === 'disconnected') {
           _scheduleRetry(5000);
@@ -147,18 +141,11 @@ const PetWebRTC = (() => {
     if (_isClosing) return;
     _cancelRetryTimer();
 
-    if (retryCount >= MAX_RETRIES) {
-      console.warn('[WebRTC] Max retries reached, falling back to MJPEG');
-      if (_onFallback) _onFallback();
-      _startFallbackTimer();
-      return;
-    }
-
     retryCount++;
     const delay = initialDelay > 0
       ? initialDelay
       : RETRY_BASE_DELAY * Math.pow(2, retryCount - 1);
-    console.log('[WebRTC] Retry ' + retryCount + '/' + MAX_RETRIES + ' in ' + delay + 'ms');
+    console.log('[WebRTC] Retry ' + retryCount + ' in ' + delay + 'ms');
 
     _retryTimer = setTimeout(() => {
       _retryTimer = null;
@@ -168,30 +155,10 @@ const PetWebRTC = (() => {
     }, delay);
   }
 
-  function _startFallbackTimer() {
-    _cancelFallbackTimer();
-    _fallbackTimer = setInterval(() => {
-      if (_isClosing) {
-        _cancelFallbackTimer();
-        return;
-      }
-      console.log('[WebRTC] Periodic retry from MJPEG fallback');
-      retryCount = 0;
-      if (_videoEl) connect(_videoEl);
-    }, FALLBACK_RETRY_INTERVAL);
-  }
-
   function _cancelRetryTimer() {
     if (_retryTimer) {
       clearTimeout(_retryTimer);
       _retryTimer = null;
-    }
-  }
-
-  function _cancelFallbackTimer() {
-    if (_fallbackTimer) {
-      clearInterval(_fallbackTimer);
-      _fallbackTimer = null;
     }
   }
 
@@ -217,7 +184,6 @@ const PetWebRTC = (() => {
   function close() {
     _isClosing = true;
     _cancelRetryTimer();
-    _cancelFallbackTimer();
     _internalClose();
   }
 
@@ -231,6 +197,5 @@ const PetWebRTC = (() => {
     isConnected,
     set onConnected(fn) { _onConnected = fn; },
     set onDisconnected(fn) { _onDisconnected = fn; },
-    set onFallback(fn) { _onFallback = fn; },
   };
 })();

@@ -2,10 +2,10 @@
  * DNG Camera — Service Worker
  *
  * Caches the app shell (HTML, CSS, JS, icons) for fast loading.
- * Streaming data (MJPEG, WebSocket) is NOT cached.
+ * Streaming data (WebSocket) is NOT cached.
  */
 
-const CACHE_NAME = "petcam-v16";
+const CACHE_NAME = "petcam-v17";
 const APP_SHELL = [
   "/",
   "/static/css/style.css",
@@ -47,7 +47,6 @@ self.addEventListener("fetch", (event) => {
   // Skip non-GET, streaming, WebSocket, and API requests
   if (
     event.request.method !== "GET" ||
-    url.pathname.startsWith("/video_feed") ||
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/socket.io/")
   ) {

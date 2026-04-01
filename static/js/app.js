@@ -2,6 +2,26 @@
  * DNG Camera — Main UI logic
  */
 (() => {
+  // ---- Single-instance guard via BroadcastChannel ----
+  const _instanceId = Math.random().toString(36).slice(2);
+  const _bc = typeof BroadcastChannel !== 'undefined'
+    ? new BroadcastChannel('dng-camera-instance')
+    : null;
+
+  if (_bc) {
+    // Announce this instance — any existing tab will yield
+    _bc.postMessage({ type: 'claim', id: _instanceId });
+
+    _bc.onmessage = (e) => {
+      if (e.data.type === 'claim' && e.data.id !== _instanceId) {
+        // Another tab/PWA instance opened — release all connections
+        console.warn('[App] Another instance detected, releasing connections');
+        PetWebRTC.close();
+        PetAudio.disconnect();
+        _bc.close();
+      }
+    };
+  }
   // ---- Elements ----
   const btnListen = document.getElementById('btn-listen');
   const btnTalk = document.getElementById('btn-talk');
@@ -63,43 +83,14 @@
     if (btnShowFace) btnShowFace.disabled = blocked;
   };
 
-  // ---- Video: WebRTC with MJPEG fallback ----
+  // ---- Video: WebRTC ----
   const videoWebRTC = document.getElementById('video-stream-webrtc');
-  const videoMJPEG = document.getElementById('video-stream-mjpeg');
   const videoOverlay = document.getElementById('video-overlay');
   const loadingOverlay = document.getElementById('loading-overlay');
 
-  function checkVideoLoaded() {
-    if (videoMJPEG.naturalWidth > 0) {
-      videoOverlay.hidden = true;
-      loadingOverlay.hidden = true;
-    } else {
-      // Show video-overlay only if loading-overlay is not already visible
-      if (loadingOverlay.hidden) {
-        videoOverlay.hidden = false;
-      }
-      requestAnimationFrame(checkVideoLoaded);
-    }
-  }
-
-  function showWebRTC() {
-    videoWebRTC.hidden = false;
-    videoMJPEG.hidden = true;
-    // Stop MJPEG stream to save bandwidth
-    videoMJPEG.src = '';
-    videoOverlay.hidden = true;
-  }
-
-  function showMJPEG() {
-    videoWebRTC.hidden = true;
-    videoMJPEG.hidden = false;
-    videoMJPEG.src = '/video_feed?' + Date.now();
-    checkVideoLoaded();
-  }
-
   PetWebRTC.onConnected = () => {
     console.log('[App] WebRTC connected');
-    showWebRTC();
+    videoOverlay.hidden = true;
     loadingOverlay.hidden = true;
   };
 
@@ -107,17 +98,9 @@
     console.log('[App] WebRTC disconnected, waiting for reconnect...');
   };
 
-  PetWebRTC.onFallback = () => {
-    console.log('[App] Falling back to MJPEG');
-    showMJPEG();
-    // loading-overlay is hidden by checkVideoLoaded when MJPEG image loads
-  };
-
   // Initial connection
   videoOverlay.hidden = false;
-  PetWebRTC.connect(videoWebRTC).then((ok) => {
-    if (!ok) showMJPEG();
-  });
+  PetWebRTC.connect(videoWebRTC);
 
   // ---- Audio: Listen toggle ----
   btnListen.addEventListener('click', () => {
@@ -157,32 +140,18 @@
   // ---- Snapshot download ----
   btnSnapshot.addEventListener('click', async () => {
     try {
-      if (PetWebRTC.isConnected()) {
-        // WebRTC: capture from video element via canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = videoWebRTC.videoWidth;
-        canvas.height = videoWebRTC.videoHeight;
-        canvas.getContext('2d').drawImage(videoWebRTC, 0, 0);
-        canvas.toBlob((blob) => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `snapshot_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
-          a.click();
-          URL.revokeObjectURL(url);
-        }, 'image/jpeg', 0.95);
-      } else {
-        // MJPEG: fetch from server
-        const res = await fetch('/snapshot');
-        if (!res.ok) throw new Error('Failed');
-        const blob = await res.blob();
+      const canvas = document.createElement('canvas');
+      canvas.width = videoWebRTC.videoWidth;
+      canvas.height = videoWebRTC.videoHeight;
+      canvas.getContext('2d').drawImage(videoWebRTC, 0, 0);
+      canvas.toBlob((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `snapshot_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
         a.click();
         URL.revokeObjectURL(url);
-      }
+      }, 'image/jpeg', 0.95);
     } catch (err) {
       alert('スナップショットの取得に失敗しました');
     }
@@ -294,18 +263,9 @@
       if (res.ok) {
         settingsPanel.hidden = true;
         // Reconnect WebRTC with new camera settings
-        if (PetWebRTC.isConnected()) {
-          PetWebRTC.close();
-          videoOverlay.hidden = false;
-          PetWebRTC.connect(videoWebRTC).then((ok) => {
-            if (!ok) showMJPEG();
-          });
-        } else {
-          // MJPEG fallback: reload stream
-          videoOverlay.hidden = false;
-          videoMJPEG.src = '/video_feed?' + Date.now();
-          checkVideoLoaded();
-        }
+        PetWebRTC.close();
+        videoOverlay.hidden = false;
+        PetWebRTC.connect(videoWebRTC);
       } else {
         const data = await res.json();
         alert(data.error?.message || '設定の適用に失敗しました');
@@ -342,9 +302,8 @@
       if (!res.ok) return;
       const data = await res.json();
       uptimeEl.textContent = formatUptime(data.uptime_seconds);
-      const mode = PetWebRTC.isConnected() ? 'WebRTC' : 'MJPEG';
       statusFps.textContent = `${data.fps} fps`;
-      statusRes.textContent = `${data.resolution} (${mode})`;
+      statusRes.textContent = data.resolution;
       const mic = data.audio.microphone_active ? 'ON' : 'OFF';
       const listeners = data.audio.listening_clients;
       statusAudio.textContent = `マイク: ${mic} / リスナー: ${listeners}`;
@@ -654,7 +613,7 @@
           loadingOverlay.hidden = true;
         });
       } else {
-        // Need full reconnect — onConnected / onFallback will hide overlay
+        // Need full reconnect — onConnected will hide overlay
         PetWebRTC.connect(videoWebRTC);
       }
 

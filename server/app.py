@@ -116,15 +116,6 @@ def index():
     return render_template("login.html")
 
 
-@app.route("/video_feed")
-@login_required
-def video_feed():
-    return Response(
-        camera.generate_mjpeg(),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-    )
-
-
 @app.route("/snapshot")
 @login_required
 def snapshot():

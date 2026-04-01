@@ -4,7 +4,7 @@
 
 ## 主な機能
 
-- **ライブ映像** — MJPEG ストリーミングで低遅延のリアルタイム映像
+- **ライブ映像** — WebRTC (H.264) で低遅延のリアルタイム映像
 - **双方向音声** — 家の音を聞く / スマホからペットに話しかける（プッシュトゥトーク）
 - **スナップショット** — ワンタップで静止画を撮影・保存
 - **カメラ設定** — 解像度・FPS・明るさ・コントラストをブラウザから調整
@@ -145,7 +145,7 @@ pet-camera/
 | 音声 I/O | sounddevice + NumPy |
 | Web サーバー | Flask |
 | WebSocket | Flask-SocketIO |
-| 映像配信 | MJPEG over HTTPS |
+| 映像配信 | WebRTC (H.264, aiortc) |
 | 音声配信 | PCM 16kHz/16bit over WSS |
 | パスキー認証 | WebAuthn (py-webauthn) |
 | VPN | Tailscale (WireGuard) |

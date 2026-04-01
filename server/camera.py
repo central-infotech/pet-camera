@@ -221,21 +221,6 @@ class Camera:
         with self._lock:
             return self._frame.copy() if self._frame is not None else None
 
-    def generate_mjpeg(self):
-        """Generator yielding MJPEG frames for streaming."""
-        while True:
-            jpeg = self.get_frame_jpeg()
-            if jpeg is None:
-                time.sleep(0.1)
-                continue
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n"
-                b"Content-Length: " + str(len(jpeg)).encode() + b"\r\n"
-                b"\r\n" + jpeg + b"\r\n"
-            )
-            time.sleep(1.0 / self._fps)
-
     def get_settings(self) -> dict:
         return {
             "resolution": {"width": self._resolution[0], "height": self._resolution[1]},
