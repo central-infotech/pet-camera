@@ -102,13 +102,26 @@ class AudioCapture:
 
 
 class AudioPlayer:
-    """Plays received PCM audio through the speaker."""
+    """Plays received PCM audio through the speaker.
+
+    play() is non-blocking: PCM is enqueued and written to the OutputStream by
+    a dedicated worker thread. This keeps Socket.IO event handlers off the
+    audio device, so a transient PortAudio stall cannot freeze the websocket
+    connection. The queue is bounded; on overflow the oldest chunk is dropped
+    to prevent latency build-up.
+    """
+
+    # Bounded playback queue. 16 chunks ≈ 1 s of audio at 1024 samples / 16 kHz.
+    _PLAY_QUEUE_MAX = 16
 
     def __init__(self):
         self._stream: sd.OutputStream | None = None
         self._lock = threading.Lock()
         self._running = False
         self._talking_clients = 0
+        self._play_queue: queue.Queue[bytes] = queue.Queue(maxsize=self._PLAY_QUEUE_MAX)
+        self._writer_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
 
     def start(self):
         if self._running:
@@ -125,6 +138,13 @@ class AudioPlayer:
                 )
                 self._stream.start()
                 self._running = True
+                self._stop_event.clear()
+                self._writer_thread = threading.Thread(
+                    target=self._writer_loop,
+                    name="audio-player-writer",
+                    daemon=True,
+                )
+                self._writer_thread.start()
                 logger.info("AudioPlayer: speaker stream started (rate=%d, ch=%d, chunk=%d)",
                             config.AUDIO_SAMPLE_RATE, config.AUDIO_CHANNELS, config.AUDIO_CHUNK_SIZE)
                 return
@@ -139,35 +159,84 @@ class AudioPlayer:
 
     def stop(self):
         self._running = False
+        self._stop_event.set()
+        # Drain queue so the writer thread exits its blocking get() promptly.
+        while True:
+            try:
+                self._play_queue.get_nowait()
+            except queue.Empty:
+                break
+        if self._writer_thread and self._writer_thread.is_alive():
+            self._writer_thread.join(timeout=2)
+        self._writer_thread = None
         if self._stream:
-            self._stream.stop()
-            self._stream.close()
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                logger.exception("AudioPlayer: error closing stream")
             self._stream = None
         logger.info("AudioPlayer: stopped")
 
     def play(self, pcm_data: bytes):
-        if not self._running or not self._stream:
+        """Enqueue PCM for asynchronous playback. Non-blocking.
+
+        On overflow drops the oldest queued chunk so playback stays close to
+        real time even if the device temporarily slows down.
+        """
+        if not self._running:
             return
         try:
-            samples = np.frombuffer(pcm_data, dtype=np.int16)
-            samples = samples.reshape(-1, config.AUDIO_CHANNELS)
-            self._stream.write(samples)
-        except sd.PortAudioError:
-            logger.exception("AudioPlayer: PortAudio error, attempting stream restart")
-            self._restart_stream()
-        except Exception:
-            logger.exception("AudioPlayer: playback error")
+            self._play_queue.put_nowait(pcm_data)
+        except queue.Full:
+            try:
+                self._play_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._play_queue.put_nowait(pcm_data)
+            except queue.Full:
+                pass
 
-    def _restart_stream(self):
-        """Attempt to restart the output stream after a device error."""
+    def _writer_loop(self):
+        """Background worker: drain the queue into the OutputStream."""
+        while not self._stop_event.is_set():
+            try:
+                pcm_data = self._play_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            stream = self._stream
+            if stream is None:
+                continue
+            try:
+                samples = np.frombuffer(pcm_data, dtype=np.int16)
+                samples = samples.reshape(-1, config.AUDIO_CHANNELS)
+                stream.write(samples)
+            except sd.PortAudioError:
+                logger.exception("AudioPlayer: PortAudio error, attempting stream reopen")
+                self._reopen_stream()
+            except Exception:
+                logger.exception("AudioPlayer: playback error")
+
+    def _reopen_stream(self):
+        """Re-open the OutputStream after a device error. Called from the writer thread."""
         try:
             if self._stream:
-                self._stream.close()
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
                 self._stream = None
-            self._running = False
-            self.start()
+            self._stream = sd.OutputStream(
+                samplerate=config.AUDIO_SAMPLE_RATE,
+                channels=config.AUDIO_CHANNELS,
+                dtype="int16",
+                blocksize=config.AUDIO_CHUNK_SIZE,
+            )
+            self._stream.start()
+            logger.info("AudioPlayer: stream re-opened after error")
         except Exception:
-            logger.exception("AudioPlayer: restart failed")
+            logger.exception("AudioPlayer: stream re-open failed")
 
     def acquire_talk(self) -> bool:
         """Try to acquire talk slot (only 1 client can talk at a time)."""
