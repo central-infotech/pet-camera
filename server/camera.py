@@ -11,16 +11,43 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
+# Devices we never want to auto-select. Substring match on the DirectShow name.
+# - "Virtual Camera" / "Face Authentication" : Windows Hello / IR auth devices
+# - "Integrated Camera" : Lenovo built-in module known to flake out (Status: Error)
+_NAME_BLOCKLIST = ("Virtual Camera", "Face Authentication", "Integrated Camera")
+
+# Preferred device for this deployment. Substring match on the DirectShow name.
+# When present, this device is selected regardless of enumeration order.
+_PREFERRED_NAME = "ELECOM 2MP Webcam"
+
+
+def _dshow_device_names(max_index: int = 10) -> list[str]:
+    """Return DirectShow video input device names in index order.
+
+    Returns an empty list if pygrabber is unavailable. Names line up with the
+    indices OpenCV's CAP_DSHOW backend uses.
+    """
+    try:
+        from pygrabber.dshow_graph import FilterGraph
+    except Exception:
+        return []
+    try:
+        return list(FilterGraph().get_input_devices())[:max_index]
+    except Exception:
+        logger.exception("Camera: failed to enumerate DirectShow device names")
+        return []
+
 
 def enumerate_cameras(max_index: int = 10) -> list[dict]:
     """Probe camera indices and return list of available cameras.
 
     Each entry contains:
       - index: int
-      - name: str (backend-reported name, or fallback)
+      - name: str (DirectShow friendly name when available, else fallback)
       - width, height: native resolution reported by the device
       - is_ir: bool heuristic — True if the device looks like an IR camera
     """
+    dshow_names = _dshow_device_names(max_index)
     cameras: list[dict] = []
     for i in range(max_index):
         cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
@@ -51,7 +78,10 @@ def enumerate_cameras(max_index: int = 10) -> list[dict]:
 
         cap.release()
 
-        name = f"Camera {i} ({backend})"
+        if i < len(dshow_names) and dshow_names[i]:
+            name = dshow_names[i]
+        else:
+            name = f"Camera {i} ({backend})"
         cameras.append({
             "index": i,
             "name": name,
@@ -64,15 +94,36 @@ def enumerate_cameras(max_index: int = 10) -> list[dict]:
 
 
 def find_best_camera_index() -> int:
-    """Auto-detect the best (non-IR) camera index."""
+    """Auto-detect the best camera index.
+
+    Selection order:
+      1. Preferred device by name (e.g. the ELECOM USB webcam).
+      2. First device whose name is not on the blocklist and is not IR.
+      3. First non-IR device.
+      4. First enumerated device.
+      5. Fallback to 0.
+    """
     cameras = enumerate_cameras()
     if not cameras:
         return 0
-    # Prefer non-IR cameras
+
+    for cam in cameras:
+        if _PREFERRED_NAME and _PREFERRED_NAME in cam["name"]:
+            logger.info("Camera: preferred device matched — %s (index=%d)",
+                        cam["name"], cam["index"])
+            return cam["index"]
+
+    for cam in cameras:
+        if cam["is_ir"]:
+            continue
+        if any(b in cam["name"] for b in _NAME_BLOCKLIST):
+            continue
+        return cam["index"]
+
     for cam in cameras:
         if not cam["is_ir"]:
             return cam["index"]
-    # Fallback to first camera
+
     return cameras[0]["index"]
 
 
